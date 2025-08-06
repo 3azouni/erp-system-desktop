@@ -1,0 +1,531 @@
+"use client"
+
+import * as React from "react"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Badge } from "@/components/ui/badge"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Separator } from "@/components/ui/separator"
+import { Clock, AlertTriangle, CheckCircle } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
+
+export interface PrintJob {
+  id?: string
+  job_id: string
+  product_id: string
+  product_name: string
+  quantity: number
+  assigned_printer_id: string
+  assigned_printer_name: string
+  estimated_time_hours: number
+  total_estimated_time: number
+  status: "Pending" | "Printing" | "Completed" | "Failed" | "Cancelled"
+  priority: "Low" | "Normal" | "High" | "Urgent"
+  customer_name?: string
+  due_date?: string
+  notes?: string
+  started_at?: string
+  completed_at?: string
+  created_at?: string
+  updated_at?: string
+}
+
+interface JobSchedulerModalProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSuccess: () => void
+}
+
+export function JobSchedulerModal({ open, onOpenChange, onSuccess }: JobSchedulerModalProps) {
+  const { toast } = useToast()
+  const [loading, setLoading] = React.useState(false)
+  const [dataLoading, setDataLoading] = React.useState(false)
+  const [products, setProducts] = React.useState<any[]>([])
+  const [printers, setPrinters] = React.useState<any[]>([])
+  const [selectedProduct, setSelectedProduct] = React.useState<any | null>(null)
+  const [recommendedPrinter, setRecommendedPrinter] = React.useState<any | null>(null)
+
+  const [formData, setFormData] = React.useState({
+    product_id: "",
+    quantity: "1",
+    assigned_printer_id: "",
+    priority: "Normal",
+    customer_name: "",
+    due_date: "",
+    notes: "",
+  })
+
+  React.useEffect(() => {
+    if (open) {
+      loadData()
+    }
+  }, [open])
+
+  React.useEffect(() => {
+    if (selectedProduct && formData.quantity && printers.length > 0) {
+      findRecommendedPrinter()
+    }
+  }, [selectedProduct, formData.quantity, printers])
+
+  const loadData = async () => {
+    try {
+      setDataLoading(true)
+
+      const [productsResponse, printersResponse] = await Promise.all([
+        fetch("/api/products"),
+        fetch("/api/printers"),
+      ])
+
+      if (!productsResponse.ok) {
+        throw new Error("Failed to fetch products")
+      }
+
+      if (!printersResponse.ok) {
+        throw new Error("Failed to fetch printers")
+      }
+
+      const productsData = await productsResponse.json()
+      const printersData = await printersResponse.json()
+
+      console.log('Products loaded:', productsData.products)
+      console.log('Printers loaded:', printersData.printers)
+
+      setProducts(productsData.products || [])
+      setPrinters(printersData.printers || [])
+    } catch (error) {
+      console.error("Error loading data:", error)
+      toast({
+        title: "Error loading data",
+        description: "Failed to load products and printers from database.",
+        variant: "destructive",
+      })
+    } finally {
+      setDataLoading(false)
+    }
+  }
+
+  const findRecommendedPrinter = () => {
+    if (!selectedProduct) return
+
+    // Filter printers that can handle this product type and are available
+    const availablePrinters = printers.filter(
+      (printer) => printer.status !== "Maintenance" && printer.status !== "Offline",
+    )
+
+    if (availablePrinters.length === 0) {
+      setRecommendedPrinter(null)
+      setFormData((prev) => ({ ...prev, assigned_printer_id: "" }))
+      return
+    }
+
+    // Sort by availability (idle first, then by queue length)
+    const sortedPrinters = availablePrinters.sort((a, b) => {
+      if (a.status === "Idle" && b.status !== "Idle") return -1
+      if (b.status === "Idle" && a.status !== "Idle") return 1
+      return (a.job_queue || 0) - (b.job_queue || 0)
+    })
+
+    setRecommendedPrinter(sortedPrinters[0])
+    setFormData((prev) => ({ ...prev, assigned_printer_id: sortedPrinters[0].id.toString() }))
+  }
+
+  const handleInputChange = (field: string, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }))
+
+    if (field === "product_id") {
+      const product = products.find((p) => p.id.toString() === value)
+      setSelectedProduct(product || null)
+    }
+  }
+
+  const calculateEstimatedTime = () => {
+    if (!selectedProduct || !formData.quantity) return 0
+    return (selectedProduct.print_time || 0) * Number.parseInt(formData.quantity)
+  }
+
+  const generateJobId = () => {
+    const timestamp = Date.now().toString().slice(-6)
+    const random = Math.random().toString(36).substring(2, 5).toUpperCase()
+    return `JOB-${timestamp}-${random}`
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+
+    try {
+      if (!selectedProduct || !recommendedPrinter) {
+        throw new Error("Please select a product and ensure a printer is available")
+      }
+
+      const jobId = generateJobId()
+      const estimatedTime = calculateEstimatedTime()
+
+      const jobData: PrintJob = {
+        job_id: jobId,
+        product_id: formData.product_id,
+        product_name: selectedProduct.product_name,
+        quantity: parseInt(formData.quantity),
+        assigned_printer_id: formData.assigned_printer_id,
+        assigned_printer_name: recommendedPrinter.printer_name,
+        estimated_time_hours: selectedProduct.print_time || 0,
+        total_estimated_time: estimatedTime,
+        status: "Pending",
+        priority: formData.priority as PrintJob["priority"],
+        customer_name: formData.customer_name || undefined,
+        due_date: formData.due_date || undefined,
+        notes: formData.notes || undefined,
+      }
+
+      const token = localStorage.getItem("auth_token")
+      if (!token) {
+        throw new Error("Authentication required")
+      }
+
+      const response = await fetch("/api/print-jobs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          product_id: parseInt(formData.product_id),
+          printer_id: parseInt(formData.assigned_printer_id),
+          quantity: parseInt(formData.quantity),
+          estimated_print_time: selectedProduct.print_time || 0,
+          status: "Pending"
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to create print job")
+      }
+
+      const result = await response.json()
+
+      toast({
+        title: "Job scheduled successfully!",
+        description: `Job ${jobId} has been added to the queue.`,
+      })
+
+      onSuccess()
+      onOpenChange(false)
+      resetForm()
+    } catch (error: any) {
+      console.error("Error scheduling job:", error)
+      toast({
+        title: "Error scheduling job",
+        description: error.message || "Please try again later.",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const resetForm = () => {
+    setFormData({
+      product_id: "",
+      quantity: "1",
+      assigned_printer_id: "",
+      priority: "Normal",
+      customer_name: "",
+      due_date: "",
+      notes: "",
+    })
+    setSelectedProduct(null)
+    setRecommendedPrinter(null)
+  }
+
+  const getAvailablePrinters = () => {
+    return printers.filter((printer) => printer.status !== "Maintenance" && printer.status !== "Offline")
+  }
+
+  const getPrinterStatusColor = (status: string) => {
+    switch (status) {
+      case "Idle":
+        return "bg-green-100 text-green-800"
+      case "Printing":
+        return "bg-blue-100 text-blue-800"
+      case "Maintenance":
+        return "bg-yellow-100 text-yellow-800"
+      default:
+        return "bg-gray-100 text-gray-800"
+    }
+  }
+
+  if (dataLoading) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Schedule New Print Job</DialogTitle>
+            <DialogDescription>Loading products and printers...</DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center justify-center py-8">
+            <div className="text-center">Loading...</div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    )
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Schedule New Print Job</DialogTitle>
+          <DialogDescription>
+            Select a product and quantity, then assign to an available printer for production
+          </DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Left Column - Job Details */}
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="product_id">Product *</Label>
+                <Select value={formData.product_id} onValueChange={(value) => handleInputChange("product_id", value)} name="product_id">
+                  <SelectTrigger id="product_id">
+                    <SelectValue placeholder="Select product to print" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {products.map((product) => (
+                      <SelectItem key={product.id} value={product.id.toString()}>
+                        <div className="flex items-center justify-between w-full">
+                          <span>{product.product_name}</span>
+                          <Badge variant="outline" className="ml-2">
+                            {product.sku}
+                          </Badge>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="quantity">Quantity *</Label>
+                  <Input
+                    id="quantity"
+                    type="number"
+                    min="1"
+                    value={formData.quantity}
+                    onChange={(e) => handleInputChange("quantity", e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="priority">Priority</Label>
+                  <Select value={formData.priority} onValueChange={(value) => handleInputChange("priority", value)}>
+                    <SelectTrigger id="priority" name="priority">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Low">Low</SelectItem>
+                      <SelectItem value="Normal">Normal</SelectItem>
+                      <SelectItem value="High">High</SelectItem>
+                      <SelectItem value="Urgent">Urgent</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="customer_name">Customer Name</Label>
+                <Input
+                  id="customer_name"
+                  value={formData.customer_name}
+                  onChange={(e) => handleInputChange("customer_name", e.target.value)}
+                  placeholder="Optional customer name"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="due_date">Due Date</Label>
+                <Input
+                  id="due_date"
+                  type="date"
+                  value={formData.due_date}
+                  onChange={(e) => handleInputChange("due_date", e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="notes">Notes</Label>
+                <Input
+                  id="notes"
+                  value={formData.notes}
+                  onChange={(e) => handleInputChange("notes", e.target.value)}
+                  placeholder="Additional job notes..."
+                />
+              </div>
+            </div>
+
+            {/* Right Column - Product Info & Printer Assignment */}
+            <div className="space-y-4">
+              {/* Product Information */}
+              {selectedProduct && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Product Details</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Print Time per Unit:</span>
+                      <span className="font-medium">{selectedProduct.print_time || 0}h</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Weight per Unit:</span>
+                      <span className="font-medium">{selectedProduct.weight || 0}g</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Printer Type:</span>
+                      <Badge variant="outline">{selectedProduct.printer_type || "Any"}</Badge>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Materials:</span>
+                      <div className="flex gap-1">
+                        {selectedProduct.required_materials?.map((material: string) => (
+                          <Badge key={material} variant="secondary" className="text-xs">
+                            {material}
+                          </Badge>
+                        )) || <span className="text-sm">None specified</span>}
+                      </div>
+                    </div>
+                    <Separator />
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-medium">Total Estimated Time:</span>
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-bold text-lg">{calculateEstimatedTime().toFixed(1)}h</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Printer Assignment */}
+              {selectedProduct && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">Printer Assignment</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {recommendedPrinter ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle className="h-5 w-5 text-green-500" />
+                          <span className="font-medium">Recommended Printer</span>
+                        </div>
+                        <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg">
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="font-medium">{recommendedPrinter.printer_name}</span>
+                            <Badge className={getPrinterStatusColor(recommendedPrinter.status)}>
+                              {recommendedPrinter.status}
+                            </Badge>
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            <div>Model: {recommendedPrinter.model}</div>
+                            <div>Queue: {recommendedPrinter.job_queue || 0} jobs</div>
+                          </div>
+                        </div>
+
+                        {/* Alternative Printers */}
+                        <div className="space-y-2">
+                          <Label>Alternative Printers</Label>
+                          <Select
+                            value={formData.assigned_printer_id}
+                            onValueChange={(value) => handleInputChange("assigned_printer_id", value)}
+                            name="assigned_printer_id"
+                          >
+                            <SelectTrigger id="assigned_printer_id">
+                              <SelectValue placeholder="Select alternative printer" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {getAvailablePrinters().map((printer) => (
+                                <SelectItem key={printer.id} value={printer.id.toString()}>
+                                  <div className="flex items-center justify-between w-full">
+                                    <span>{printer.printer_name}</span>
+                                    <div className="flex items-center gap-2 ml-2">
+                                      <Badge className={getPrinterStatusColor(printer.status)} variant="outline">
+                                        {printer.status}
+                                      </Badge>
+                                      <span className="text-xs">Queue: {printer.job_queue || 0}</span>
+                                    </div>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-yellow-600">
+                        <AlertTriangle className="h-5 w-5" />
+                        <span>No compatible printers available</span>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Time Calculation */}
+              {selectedProduct && formData.quantity && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">Time Calculation</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm">Print time per unit:</span>
+                      <span>{selectedProduct.print_time || 0}h</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm">Quantity:</span>
+                      <span>{formData.quantity} units</span>
+                    </div>
+                    <Separator />
+                    <div className="flex justify-between font-medium">
+                      <span>Total time:</span>
+                      <span>{calculateEstimatedTime().toFixed(1)} hours</span>
+                    </div>
+                    <div className="flex justify-between text-sm text-muted-foreground">
+                      <span>Estimated completion:</span>
+                      <span>
+                        {new Date(Date.now() + calculateEstimatedTime() * 60 * 60 * 1000).toLocaleDateString()}
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={loading || !selectedProduct || !recommendedPrinter}>
+              {loading ? "Scheduling..." : "Schedule Job"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
