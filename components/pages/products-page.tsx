@@ -31,6 +31,12 @@ interface Product {
   status: string
   created_at: string
   updated_at: string
+  availability?: {
+    available_stock: number
+    in_production: number
+    total_available: number
+    has_active_jobs: boolean
+  }
 }
 
 const CATEGORIES = [
@@ -90,7 +96,42 @@ export function ProductsPage() {
         })
       })
       
-      setProducts(data.products || [])
+      // Load availability data for each product
+      const productsWithAvailability = await Promise.all(
+        data.products.map(async (product: any) => {
+          try {
+            const availabilityResponse = await fetch("/api/products/availability", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                product_id: product.id,
+                quantity: 1,
+              }),
+            })
+
+            if (availabilityResponse.ok) {
+              const availabilityData = await availabilityResponse.json()
+              return {
+                ...product,
+                availability: {
+                  available_stock: availabilityData.available_stock,
+                  in_production: availabilityData.in_production,
+                  total_available: availabilityData.total_available,
+                  has_active_jobs: availabilityData.has_production_in_progress,
+                }
+              }
+            }
+          } catch (error) {
+            console.error(`Error loading availability for product ${product.id}:`, error)
+          }
+          
+          return product
+        })
+      )
+      
+      setProducts(productsWithAvailability || [])
 
       if (data.products.length === 0) {
         toast({
@@ -390,13 +431,14 @@ export function ProductsPage() {
                   <TableHead>Print Time</TableHead>
                   <TableHead>Weight</TableHead>
                   <TableHead>Printer Type</TableHead>
+                  <TableHead>Availability</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredProducts.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8">
+                    <TableCell colSpan={9} className="text-center py-8">
                       <div className="text-muted-foreground">
                         {searchTerm || selectedCategory !== "All Categories"
                           ? "No products match your filters"
@@ -466,6 +508,31 @@ export function ProductsPage() {
                           <Badge variant="secondary" className="text-xs">
                             {product.printer_type || "Not specified"}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {product.availability ? (
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <Badge 
+                                  variant={product.availability.total_available > 0 ? "default" : "destructive"}
+                                  className="text-xs"
+                                >
+                                  {product.availability.total_available > 0 ? "Available" : "Out of Stock"}
+                                </Badge>
+                                {product.availability.has_active_jobs && (
+                                  <Badge variant="outline" className="text-xs">
+                                    In Production
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                Stock: {product.availability.available_stock} | 
+                                Production: {product.availability.in_production}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-xs text-muted-foreground">Loading...</div>
+                          )}
                         </TableCell>
                         <TableCell className="text-right">
                           <DropdownMenu>

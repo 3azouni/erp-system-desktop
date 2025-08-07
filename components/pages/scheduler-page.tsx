@@ -15,14 +15,14 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useToast } from "@/hooks/use-toast"
 import { JobSchedulerModal } from "@/components/job-scheduler-modal"
-import { CalendarIcon, Clock, AlertCircle, CheckCircle, Play, Pause, Edit, Trash2, Plus, MoreHorizontal } from "lucide-react"
+import { CalendarIcon, Clock, AlertCircle, CheckCircle, Play, Pause, Edit, Trash2, Plus, MoreHorizontal, Eye, Copy, Archive, RotateCcw } from "lucide-react"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import { useSettings } from "@/contexts/settings-context"
 
 interface PrintJob {
   id: string
-  job_name: string
+  job_id: string
   product_id: string
   product_name: string
   printer_id: string
@@ -37,6 +37,8 @@ interface PrintJob {
   notes: string
   created_at: string
   updated_at: string
+  started_at?: string
+  completed_at?: string
 }
 
 const getStatusColor = (status: string) => {
@@ -99,8 +101,16 @@ export function SchedulerPage() {
     try {
       setLoading(true)
 
-      const response = await fetch("/api/print-jobs")
+      const token = localStorage.getItem("auth_token")
+      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {}
+
+      const response = await fetch("/api/print-jobs", { headers })
       if (!response.ok) {
+        if (response.status === 401) {
+          console.log("Authentication required for print jobs")
+          setJobs([])
+          return
+        }
         throw new Error("Failed to fetch print jobs")
       }
 
@@ -119,9 +129,59 @@ export function SchedulerPage() {
     }
   }, [toast])
 
+  const monitorPrintJobs = React.useCallback(async () => {
+    try {
+      const token = localStorage.getItem("auth_token")
+      if (!token) {
+        console.log("No auth token found for monitoring")
+        return // Don't show error for background monitoring
+      }
+
+      console.log("Calling monitor endpoint...")
+      const response = await fetch("/api/print-jobs/monitor", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      console.log("Monitor response status:", response.status)
+      if (response.ok) {
+        const data = await response.json()
+        console.log("Monitor response data:", data)
+        if (data.notifications && data.notifications.length > 0) {
+          // Show toast for overdue jobs
+          data.notifications.forEach((notification: any) => {
+            toast({
+              title: "Print Job Overdue",
+              description: `${notification.productName} should have finished ${notification.overdueBy} minutes ago. Please check the printer.`,
+              variant: "destructive",
+            })
+          })
+        } else {
+          console.log("No overdue jobs found")
+        }
+      } else {
+        console.error("Monitor endpoint returned error:", response.status)
+        const errorData = await response.json()
+        console.error("Error data:", errorData)
+      }
+    } catch (error) {
+      console.error("Error monitoring print jobs:", error)
+      // Don't show error toast for background monitoring
+    }
+  }, [toast])
+
   React.useEffect(() => {
     loadData()
-  }, [loadData])
+    
+    // Set up periodic monitoring of print jobs
+    const monitorInterval = setInterval(() => {
+      monitorPrintJobs()
+    }, 60000) // Check every minute
+    
+    return () => clearInterval(monitorInterval)
+  }, [loadData, monitorPrintJobs])
 
   // Filter jobs by status
   const filteredJobs = React.useMemo(() => {
@@ -155,30 +215,49 @@ export function SchedulerPage() {
 
   const updateJobStatus = async (jobId: string, newStatus: PrintJob["status"]) => {
     try {
+      console.log(`Updating job ${jobId} to status: ${newStatus}`)
+      const token = localStorage.getItem("auth_token")
+      if (!token) {
+        throw new Error("Authentication required")
+      }
+
       const updateData: any = { status: newStatus }
 
       if (newStatus === "Printing") {
-        updateData.start_time = new Date().toISOString()
+        updateData.started_at = new Date().toISOString()
       } else if (newStatus === "Completed") {
-        updateData.end_time = new Date().toISOString()
+        updateData.completed_at = new Date().toISOString()
       }
+
+      console.log("Update data:", updateData)
 
       // Update job status using local API
       const response = await fetch(`/api/print-jobs/${jobId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(updateData)
       })
 
+      console.log("Update response status:", response.status)
       if (!response.ok) {
-        throw new Error('Failed to update job status')
+        const errorData = await response.json()
+        console.error("Update error data:", errorData)
+        throw new Error(errorData.error || 'Failed to update job status')
       }
+
+      const responseData = await response.json()
+      console.log("Update response data:", responseData)
 
       // Refresh jobs list
       loadData()
+      
+      toast({
+        title: "Success",
+        description: `Job status updated to ${newStatus}`,
+      })
     } catch (error) {
       console.error("Error updating job status:", error)
       toast({
@@ -191,25 +270,153 @@ export function SchedulerPage() {
 
   const deleteJob = async (jobId: string) => {
     try {
+      const token = localStorage.getItem("auth_token")
+      if (!token) {
+        throw new Error("Authentication required")
+      }
+
       // Delete job using local API
       const response = await fetch(`/api/print-jobs/${jobId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${token}`
         }
       })
 
       if (!response.ok) {
-        throw new Error('Failed to delete job')
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to delete job')
       }
 
       // Refresh jobs list
       loadData()
+      
+      toast({
+        title: "Success",
+        description: "Job deleted successfully",
+      })
     } catch (error) {
       console.error("Error deleting job:", error)
       toast({
         title: "Error",
         description: "Failed to delete job",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const viewJobDetails = (job: PrintJob) => {
+    // Show job details in a modal or navigate to details page
+    const details = `
+Job ID: ${job.job_id}
+Product: ${job.product_name}
+Quantity: ${job.quantity}x
+Estimated Time: ${formatDuration(job.estimated_duration)}h
+Status: ${job.status}
+Priority: ${job.priority}
+Created: ${formatDate(job.created_at)}
+${job.started_at ? `Started: ${formatDate(job.started_at)}` : ''}
+${job.completed_at ? `Completed: ${formatDate(job.completed_at)}` : ''}
+    `.trim()
+
+    toast({
+      title: "Job Details",
+      description: details,
+      duration: 5000,
+    })
+  }
+
+  const duplicateJob = async (job: PrintJob) => {
+    try {
+      const token = localStorage.getItem("auth_token")
+      if (!token) {
+        throw new Error("Authentication required")
+      }
+
+      // Create a new job with the same parameters
+      const response = await fetch("/api/print-jobs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          product_id: parseInt(job.product_id),
+          printer_id: parseInt(job.printer_id),
+          quantity: job.quantity,
+          estimated_print_time: job.estimated_duration,
+          status: "Pending"
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to duplicate job')
+      }
+
+      toast({
+        title: "Job Duplicated",
+        description: `Successfully created duplicate of job ${job.job_id}`,
+      })
+
+      // Refresh the jobs list
+      loadData()
+    } catch (error) {
+      console.error("Error duplicating job:", error)
+      toast({
+        title: "Error",
+        description: "Failed to duplicate job",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const editJob = (job: PrintJob) => {
+    // For now, show a toast with edit options
+    // In a full implementation, this would open an edit modal
+    toast({
+      title: "Edit Job",
+      description: `Editing functionality for job ${job.job_id} - This would open an edit modal in a full implementation.`,
+      duration: 4000,
+    })
+  }
+
+  const archiveJob = async (jobId: string) => {
+    try {
+      const token = localStorage.getItem("auth_token")
+      if (!token) {
+        throw new Error("Authentication required")
+      }
+
+      // Update job status to "Archived" (or you could add an archived field)
+      const response = await fetch(`/api/print-jobs/${jobId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          status: "Archived"
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to archive job')
+      }
+
+      toast({
+        title: "Job Archived",
+        description: `Successfully archived job ${jobId}`,
+      })
+
+      // Refresh the jobs list
+      loadData()
+    } catch (error) {
+      console.error("Error archiving job:", error)
+      toast({
+        title: "Error",
+        description: "Failed to archive job",
         variant: "destructive",
       })
     }
@@ -256,10 +463,20 @@ export function SchedulerPage() {
           <h1 className="text-3xl font-bold tracking-tight">Production Scheduler</h1>
           <p className="text-muted-foreground">Manage your 3D printing job queue and production schedule</p>
         </div>
-        <Button onClick={() => setIsModalOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Schedule Job
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => setIsModalOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Schedule Job
+          </Button>
+          <Button 
+            variant="outline" 
+            onClick={monitorPrintJobs}
+            disabled={loading}
+          >
+            <Clock className="mr-2 h-4 w-4" />
+            Check Overdue Jobs
+          </Button>
+        </div>
       </div>
 
       {/* Statistics Cards */}
@@ -365,6 +582,7 @@ export function SchedulerPage() {
                 <TableHead>Est. Time</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Priority</TableHead>
+                <TableHead>Availability Impact</TableHead>
                 <TableHead>Customer</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -373,7 +591,7 @@ export function SchedulerPage() {
             <TableBody>
               {filteredJobs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-8">
+                  <TableCell colSpan={11} className="text-center py-8">
                     <div className="text-muted-foreground">
                       {selectedStatus !== "All"
                         ? `No ${selectedStatus.toLowerCase()} jobs found`
@@ -385,7 +603,7 @@ export function SchedulerPage() {
                 filteredJobs.map((job) => (
                   <TableRow key={job.id}>
                     <TableCell>
-                      <div className="font-mono text-sm">{job.job_name}</div>
+                      <div className="font-mono text-sm">{job.job_id}</div>
                     </TableCell>
                     <TableCell>
                       <div>
@@ -417,6 +635,16 @@ export function SchedulerPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>
+                      <div className="text-xs">
+                        <div className="font-medium">+{job.quantity} units</div>
+                        <div className="text-muted-foreground">
+                          {job.status === "Completed" ? "Added to stock" : 
+                           job.status === "Printing" ? "In production" : 
+                           "Will be available"}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
                       <div className="text-sm">{job.notes || "-"}</div>
                     </TableCell>
                     <TableCell className="text-sm">{formatDate(job.created_at)}</TableCell>
@@ -429,13 +657,30 @@ export function SchedulerPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                          
+                          {/* View Details */}
+                          <DropdownMenuItem onClick={() => viewJobDetails(job)}>
+                            <Eye className="mr-2 h-4 w-4" />
+                            View Details
+                          </DropdownMenuItem>
+                          
+                          {/* Duplicate Job */}
+                          <DropdownMenuItem onClick={() => duplicateJob(job)}>
+                            <Copy className="mr-2 h-4 w-4" />
+                            Duplicate Job
+                          </DropdownMenuItem>
+                          
+                          <DropdownMenuSeparator />
                           <DropdownMenuLabel>Change Status</DropdownMenuLabel>
+                          
                           {job.status === "Pending" && (
                             <DropdownMenuItem onClick={() => updateJobStatus(job.id, "Printing")}>
                               <Play className="mr-2 h-4 w-4" />
                               Start Printing
                             </DropdownMenuItem>
                           )}
+                          
                           {job.status === "Printing" && (
                             <>
                               <DropdownMenuItem onClick={() => updateJobStatus(job.id, "Completed")}>
@@ -446,15 +691,39 @@ export function SchedulerPage() {
                                 <AlertCircle className="mr-2 h-4 w-4" />
                                 Mark Failed
                               </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => updateJobStatus(job.id, "Pending")}>
+                                <Pause className="mr-2 h-4 w-4" />
+                                Pause Job
+                              </DropdownMenuItem>
                             </>
                           )}
+                          
                           {(job.status === "Failed" || job.status === "Completed" || job.status === "Cancelled") && (
                             <DropdownMenuItem onClick={() => updateJobStatus(job.id, "Pending")}>
-                              <Clock className="mr-2 h-4 w-4" />
+                              <RotateCcw className="mr-2 h-4 w-4" />
                               Reset to Pending
                             </DropdownMenuItem>
                           )}
+                          
                           <DropdownMenuSeparator />
+                          
+                          {/* Archive/Unarchive */}
+                          {job.status === "Completed" && (
+                            <DropdownMenuItem onClick={() => archiveJob(job.id)}>
+                              <Archive className="mr-2 h-4 w-4" />
+                              Archive Job
+                            </DropdownMenuItem>
+                          )}
+                          
+                          {/* Edit Job */}
+                          <DropdownMenuItem onClick={() => editJob(job)}>
+                            <Edit className="mr-2 h-4 w-4" />
+                            Edit Job
+                          </DropdownMenuItem>
+                          
+                          <DropdownMenuSeparator />
+                          
+                          {/* Delete Job */}
                           <DropdownMenuItem onClick={() => deleteJob(job.id)} className="text-red-600">
                             <Trash2 className="mr-2 h-4 w-4" />
                             Delete Job

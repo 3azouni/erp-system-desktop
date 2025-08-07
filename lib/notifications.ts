@@ -178,4 +178,28 @@ export async function createComponentNotification(userId: number, componentName:
     types[action] as 'info' | 'success' | 'warning' | 'error',
     { componentName, action }
   )
+}
+
+export async function createPrintJobNotification(userId: number, jobId: string, productName: string, action: 'started' | 'completed' | 'overdue' | 'failed'): Promise<void> {
+  const messages = {
+    started: `Print job for "${productName}" has started printing.`,
+    completed: `Print job for "${productName}" has completed successfully!`,
+    overdue: `Print job for "${productName}" should have finished by now. Please check the printer.`,
+    failed: `Print job for "${productName}" has failed. Please check the printer.`
+  }
+  
+  const types = {
+    started: 'info',
+    completed: 'success',
+    overdue: 'warning',
+    failed: 'error'
+  }
+  
+  await createNotification(
+    userId,
+    `Print Job ${action.charAt(0).toUpperCase() + action.slice(1)}`,
+    messages[action],
+    types[action] as 'info' | 'success' | 'warning' | 'error',
+    { jobId, productName, action }
+  )
 } 

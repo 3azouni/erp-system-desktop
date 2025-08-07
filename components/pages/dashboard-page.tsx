@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
-import { DollarSign, Package, Printer, TrendingUp, Users, AlertTriangle, Activity, Clock, RefreshCw } from "lucide-react"
+import { DollarSign, Package, Printer, TrendingUp, Users, AlertTriangle, Activity, Clock } from "lucide-react"
 import { useSettings } from "@/contexts/settings-context"
 import { useAuth } from "@/contexts/auth-context"
 import { useToast } from "@/hooks/use-toast"
@@ -37,7 +37,6 @@ export function DashboardPage() {
     lowStockComponents: 0,
   })
   const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
   const { formatCurrency, settings } = useSettings()
   const { user } = useAuth()
   const { toast } = useToast()
@@ -56,7 +55,6 @@ export function DashboardPage() {
   const fetchDashboardData = async () => {
     try {
       setLoading(true)
-      setRefreshing(true)
 
       // Initialize stats
       let totalRevenue = 0
@@ -193,7 +191,6 @@ export function DashboardPage() {
       })
     } finally {
       setLoading(false)
-      setRefreshing(false)
     }
   }
 
@@ -222,15 +219,9 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground">Welcome to {settings.app_name}</p>
-        </div>
-        <Button onClick={fetchDashboardData} disabled={refreshing}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+        <p className="text-muted-foreground">Welcome to {settings.app_name}</p>
       </div>
 
       {/* Key Metrics */}

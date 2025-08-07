@@ -12,6 +12,15 @@ const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: ['bcryptjs'],
   },
+  webpack: (config, { isServer }) => {
+    // Suppress punycode deprecation warning
+    config.ignoreWarnings = [
+      { module: /node_modules\/punycode/ },
+      /the `punycode` module is deprecated/,
+    ];
+    
+    return config;
+  },
 }
 
 export default nextConfig

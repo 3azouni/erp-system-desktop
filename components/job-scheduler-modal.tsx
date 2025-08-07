@@ -52,8 +52,11 @@ export function JobSchedulerModal({ open, onOpenChange, onSuccess }: JobSchedule
   const [dataLoading, setDataLoading] = React.useState(false)
   const [products, setProducts] = React.useState<any[]>([])
   const [printers, setPrinters] = React.useState<any[]>([])
+  const [inventory, setInventory] = React.useState<any[]>([])
   const [selectedProduct, setSelectedProduct] = React.useState<any | null>(null)
   const [recommendedPrinter, setRecommendedPrinter] = React.useState<any | null>(null)
+  const [materialAvailability, setMaterialAvailability] = React.useState<any[]>([])
+  const [productAvailability, setProductAvailability] = React.useState<any>(null)
 
   const [formData, setFormData] = React.useState({
     product_id: "",
@@ -74,16 +77,46 @@ export function JobSchedulerModal({ open, onOpenChange, onSuccess }: JobSchedule
   React.useEffect(() => {
     if (selectedProduct && formData.quantity && printers.length > 0) {
       findRecommendedPrinter()
+      checkMaterialAvailability()
+      checkProductAvailability()
     }
-  }, [selectedProduct, formData.quantity, printers])
+  }, [selectedProduct, formData.quantity, printers, inventory])
+
+  const checkProductAvailability = async () => {
+    if (!selectedProduct || !formData.quantity) return
+
+    try {
+      const response = await fetch("/api/products/availability", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          product_id: selectedProduct.id,
+          quantity: parseInt(formData.quantity),
+        }),
+      })
+
+      if (response.ok) {
+        const availability = await response.json()
+        setProductAvailability(availability)
+      }
+    } catch (error) {
+      console.error("Error checking product availability:", error)
+    }
+  }
 
   const loadData = async () => {
     try {
       setDataLoading(true)
 
-      const [productsResponse, printersResponse] = await Promise.all([
+      const token = localStorage.getItem("auth_token")
+      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {}
+
+      const [productsResponse, printersResponse, inventoryResponse] = await Promise.all([
         fetch("/api/products"),
         fetch("/api/printers"),
+        fetch("/api/inventory", { headers }),
       ])
 
       if (!productsResponse.ok) {
@@ -96,17 +129,20 @@ export function JobSchedulerModal({ open, onOpenChange, onSuccess }: JobSchedule
 
       const productsData = await productsResponse.json()
       const printersData = await printersResponse.json()
+      const inventoryData = inventoryResponse.ok ? await inventoryResponse.json() : { inventory: [] }
 
       console.log('Products loaded:', productsData.products)
       console.log('Printers loaded:', printersData.printers)
+      console.log('Inventory loaded:', inventoryData.inventory)
 
       setProducts(productsData.products || [])
       setPrinters(printersData.printers || [])
+      setInventory(inventoryData.inventory || [])
     } catch (error) {
       console.error("Error loading data:", error)
       toast({
         title: "Error loading data",
-        description: "Failed to load products and printers from database.",
+        description: "Failed to load products, printers, and inventory from database.",
         variant: "destructive",
       })
     } finally {
@@ -139,6 +175,54 @@ export function JobSchedulerModal({ open, onOpenChange, onSuccess }: JobSchedule
     setFormData((prev) => ({ ...prev, assigned_printer_id: sortedPrinters[0].id.toString() }))
   }
 
+  const checkMaterialAvailability = () => {
+    if (!selectedProduct || !formData.quantity || !inventory.length) {
+      setMaterialAvailability([])
+      return
+    }
+
+    const requiredMaterials = selectedProduct.required_materials || []
+    const quantity = parseInt(formData.quantity)
+    const weightPerUnit = selectedProduct.weight || 0 // in grams
+    const totalWeightRequired = quantity * weightPerUnit // keep in grams
+    const availability = []
+
+    for (const material of requiredMaterials) {
+      // Find matching inventory items (case-insensitive)
+      const matchingItems = inventory.filter(item => 
+        item.material_name.toLowerCase().includes(material.toLowerCase()) ||
+        material.toLowerCase().includes(item.material_name.toLowerCase())
+      )
+
+      if (matchingItems.length > 0) {
+        const totalAvailable = matchingItems.reduce((sum, item) => sum + item.quantity_available, 0)
+        const status = totalAvailable > 0 ? (totalAvailable >= totalWeightRequired ? 'Available' : 'Low') : 'Out'
+        
+        availability.push({
+          material,
+          available: totalAvailable,
+          required: totalWeightRequired,
+          status,
+          items: matchingItems,
+          weightPerUnit,
+          totalWeightRequired
+        })
+      } else {
+        availability.push({
+          material,
+          available: 0,
+          required: totalWeightRequired,
+          status: 'Not Found',
+          items: [],
+          weightPerUnit,
+          totalWeightRequired
+        })
+      }
+    }
+
+    setMaterialAvailability(availability)
+  }
+
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
 
@@ -166,6 +250,17 @@ export function JobSchedulerModal({ open, onOpenChange, onSuccess }: JobSchedule
     try {
       if (!selectedProduct || !recommendedPrinter) {
         throw new Error("Please select a product and ensure a printer is available")
+      }
+
+      // Check material availability
+      const insufficientMaterials = materialAvailability.filter(item => 
+        item.status === 'Out' || item.status === 'Not Found' || 
+        (item.status === 'Low' && item.available < item.required)
+      )
+
+      if (insufficientMaterials.length > 0) {
+        const materialNames = insufficientMaterials.map(item => item.material).join(', ')
+        throw new Error(`Insufficient materials: ${materialNames}. Please check inventory before scheduling.`)
       }
 
       const jobId = generateJobId()
@@ -407,6 +502,60 @@ export function JobSchedulerModal({ open, onOpenChange, onSuccess }: JobSchedule
                         )) || <span className="text-sm">None specified</span>}
                       </div>
                     </div>
+                    
+                    {/* Product Availability */}
+                    {productAvailability && (
+                      <div className="pt-3 border-t">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-sm font-medium">Availability Status:</span>
+                          <Badge 
+                            variant={productAvailability.is_available ? "default" : productAvailability.has_production_in_progress ? "secondary" : "destructive"}
+                            className="text-xs"
+                          >
+                            {productAvailability.is_available ? "Available" : productAvailability.has_production_in_progress ? "In Production" : "Out of Stock"}
+                          </Badge>
+                        </div>
+                        <div className="text-xs text-muted-foreground space-y-1">
+                          <div>Stock: {productAvailability.available_stock} units</div>
+                          <div>In Production: {productAvailability.in_production} units</div>
+                          <div>Total Available: {productAvailability.total_available} units</div>
+                          {productAvailability.earliest_completion && (
+                            <div>Earliest Completion: {new Date(productAvailability.earliest_completion).toLocaleDateString()}</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {materialAvailability.length > 0 && (
+                      <div className="space-y-2">
+                        <span className="text-sm text-muted-foreground">Material Availability:</span>
+                        <div className="space-y-1">
+                          {materialAvailability.map((item, index) => {
+                            const getStatusColor = (status: string) => {
+                              switch (status) {
+                                case 'Available': return 'bg-green-100 text-green-800'
+                                case 'Low': return 'bg-yellow-100 text-yellow-800'
+                                case 'Out': return 'bg-red-100 text-red-800'
+                                case 'Not Found': return 'bg-gray-100 text-gray-800'
+                                default: return 'bg-gray-100 text-gray-800'
+                              }
+                            }
+                            
+                            return (
+                              <div key={index} className="flex items-center justify-between text-xs">
+                                <span>{item.material}</span>
+                                <div className="flex items-center gap-2">
+                                  <span>{item.available}g/{item.required}g</span>
+                                  <Badge className={getStatusColor(item.status)} variant="outline">
+                                    {item.status}
+                                  </Badge>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
                     <Separator />
                     <div className="flex justify-between items-center">
                       <span className="text-sm font-medium">Total Estimated Time:</span>
@@ -520,7 +669,15 @@ export function JobSchedulerModal({ open, onOpenChange, onSuccess }: JobSchedule
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={loading || !selectedProduct || !recommendedPrinter}>
+            <Button 
+              type="submit" 
+              disabled={loading || !selectedProduct || !recommendedPrinter || 
+                materialAvailability.some(item => 
+                  item.status === 'Out' || item.status === 'Not Found' || 
+                  (item.status === 'Low' && item.available < item.required)
+                )
+              }
+            >
               {loading ? "Scheduling..." : "Schedule Job"}
             </Button>
           </DialogFooter>

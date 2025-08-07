@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getDatabase, initializeDatabase } from "@/lib/local-db"
 import { verifyToken } from "@/lib/auth"
+import { availabilityService } from "@/lib/availability-service"
 
 export async function GET(request: NextRequest) {
   try {
@@ -89,7 +90,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { product_id, printer_id, quantity, estimated_print_time, status = "Queued" } = body
+    const { product_id, printer_id, quantity, estimated_print_time, status = "Pending" } = body
 
     if (!product_id || !printer_id || !quantity || !estimated_print_time) {
       return NextResponse.json({ error: "Product ID, printer ID, quantity, and estimated print time are required" }, { status: 400 })
@@ -124,6 +125,9 @@ export async function POST(request: NextRequest) {
               if (updateErr) {
                 console.error("Printer update error:", updateErr)
               }
+              
+              // Clear availability cache for the product
+              availabilityService.clearCacheForProduct(product_id.toString())
               
               resolve(NextResponse.json({ 
                 success: true, 

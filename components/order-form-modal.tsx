@@ -134,11 +134,50 @@ export function OrderFormModal({ open, onOpenChange, order, onSave }: OrderFormM
       quantity: 1,
       unit_price: 50, // Default price - should be calculated from BOM
       total_price: 50,
+      availability_status: null,
+      availability_message: "",
     }
     setOrderedProducts([...orderedProducts, newProduct])
+    
+    // Check availability for the newly added product
+    setTimeout(async () => {
+      const availability = await checkProductAvailability(newProduct.product_id, newProduct.quantity)
+      if (availability) {
+        const updatedProducts = [...orderedProducts, newProduct]
+        const lastIndex = updatedProducts.length - 1
+        updatedProducts[lastIndex].availability_status = availability.availability_status
+        updatedProducts[lastIndex].availability_message = getAvailabilityMessage(availability)
+        setOrderedProducts(updatedProducts)
+      }
+    }, 100)
   }
 
-  const updateProduct = (index: number, field: keyof any, value: any) => { // Changed from OrderProduct to any as per edit hint
+  const checkProductAvailability = async (productId: string, quantity: number) => {
+    try {
+      const response = await fetch("/api/products/availability", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          product_id: productId,
+          quantity: quantity,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to check availability")
+      }
+
+      const availability = await response.json()
+      return availability
+    } catch (error) {
+      console.error("Error checking product availability:", error)
+      return null
+    }
+  }
+
+  const updateProduct = async (index: number, field: keyof any, value: any) => { // Changed from OrderProduct to any as per edit hint
     const updated = [...orderedProducts]
     updated[index] = { ...updated[index], [field]: value }
 
@@ -156,7 +195,28 @@ export function OrderFormModal({ open, onOpenChange, order, onSave }: OrderFormM
       updated[index].total_price = updated[index].quantity * updated[index].unit_price
     }
 
+    // Check availability when product_id or quantity changes
+    if ((field === "product_id" || field === "quantity") && updated[index].product_id && updated[index].quantity) {
+      const availability = await checkProductAvailability(updated[index].product_id, updated[index].quantity)
+      if (availability) {
+        updated[index].availability_status = availability.availability_status
+        updated[index].availability_message = getAvailabilityMessage(availability)
+      }
+    }
+
     setOrderedProducts(updated)
+  }
+
+  const getAvailabilityMessage = (availability: any) => {
+    if (availability.is_available) {
+      return `✅ Available in stock (${availability.available_stock} units)`
+    } else if (availability.has_production_in_progress) {
+      const completionDate = new Date(availability.earliest_completion).toLocaleDateString()
+      const completionTime = new Date(availability.earliest_completion).toLocaleTimeString()
+      return `⏳ In production - Will be available by ${completionDate} at ${completionTime}`
+    } else {
+      return `❌ Out of stock - No production scheduled`
+    }
   }
 
   const removeProduct = (index: number) => {
@@ -185,6 +245,21 @@ export function OrderFormModal({ open, onOpenChange, order, onSave }: OrderFormM
       toast({
         title: "Error",
         description: "Please fill in all required fields",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Check availability for all products
+    const unavailableProducts = orderedProducts.filter(product => 
+      product.availability_status === 'out_of_stock'
+    )
+
+    if (unavailableProducts.length > 0) {
+      const productNames = unavailableProducts.map(p => p.product_name).join(', ')
+      toast({
+        title: "Products Not Available",
+        description: `The following products are out of stock: ${productNames}. Please check availability before proceeding.`,
         variant: "destructive",
       })
       return
@@ -435,7 +510,7 @@ export function OrderFormModal({ open, onOpenChange, order, onSave }: OrderFormM
                           <X className="h-4 w-4" />
                         </Button>
                       </div>
-                      <div className="grid gap-4 md:grid-cols-4">
+                      <div className="grid gap-4 md:grid-cols-4" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
                         <div className="space-y-2">
                           <Label>Product</Label>
                           <Select
@@ -485,6 +560,20 @@ export function OrderFormModal({ open, onOpenChange, order, onSave }: OrderFormM
                             </Button>
                           </div>
                         </div>
+                        {product.availability_message && (
+                          <div className="space-y-2" style={{ gridColumn: '1 / -1' }}>
+                            <Label>Availability Status</Label>
+                            <div className={`p-3 rounded-md text-sm ${
+                              product.availability_status === 'available' 
+                                ? 'bg-green-50 text-green-700 border border-green-200' 
+                                : product.availability_status === 'in_production'
+                                ? 'bg-yellow-50 text-yellow-700 border border-yellow-200'
+                                : 'bg-red-50 text-red-700 border border-red-200'
+                            }`}>
+                              {product.availability_message}
+                            </div>
+                          </div>
+                        )}
                         <div className="space-y-2">
                           <Label>Unit Price</Label>
                           <Input

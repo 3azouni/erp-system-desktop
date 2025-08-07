@@ -25,15 +25,35 @@ export const getDatabase = (): sqlite3.Database => {
       if (err) {
         console.error('Error opening database:', err)
       } else {
-        console.log('Connected to local SQLite database')
+        // Only log connection once per session
+        if (!global.dbConnected) {
+          console.log('Connected to local SQLite database')
+          global.dbConnected = true
+        }
       }
     })
   }
   return db
 }
 
+// Use a more persistent flag that survives module reloads
+if (!global.dbInitialized) {
+  global.dbInitialized = false
+}
+
+let initializationPromise: Promise<void> | null = null
+
 export const initializeDatabase = async (): Promise<void> => {
-  return new Promise((resolve, reject) => {
+  if (global.dbInitialized) {
+    return Promise.resolve()
+  }
+  
+  // If initialization is already in progress, wait for it
+  if (initializationPromise) {
+    return initializationPromise
+  }
+  
+  initializationPromise = new Promise((resolve, reject) => {
     const database = getDatabase()
     
     // Enable foreign keys
@@ -145,7 +165,7 @@ export const initializeDatabase = async (): Promise<void> => {
         printer_id INTEGER NOT NULL,
         quantity INTEGER NOT NULL DEFAULT 1,
         estimated_print_time REAL NOT NULL DEFAULT 0,
-        status TEXT NOT NULL DEFAULT 'Queued',
+        status TEXT NOT NULL DEFAULT 'Pending',
         started_at DATETIME,
         completed_at DATETIME,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -219,15 +239,34 @@ export const initializeDatabase = async (): Promise<void> => {
     `
 
     database.exec(createTables, (err) => {
-      if (err) {
-        console.error('Error creating tables:', err)
-        reject(err)
-      } else {
-        console.log('Database tables created successfully')
-        // Run migrations
-        runMigrations().then(() => {
-          insertDefaultData().then(resolve).catch(reject)
-        }).catch(reject)
+             if (err) {
+         console.error('Error creating tables:', err)
+         initializationPromise = null
+         reject(err)
+       } else {
+         // Only log once per session
+         if (!global.tablesCreatedLogged) {
+           console.log('Database tables created successfully')
+           global.tablesCreatedLogged = true
+         }
+                 // Run migrations
+         runMigrations().then(() => {
+           insertDefaultData().then(() => {
+             // Clear availability cache when database is initialized
+             if (global.availabilityService) {
+               global.availabilityService.clearCache()
+             }
+             global.dbInitialized = true
+             initializationPromise = null
+             resolve()
+           }).catch((error) => {
+             initializationPromise = null
+             reject(error)
+           })
+         }).catch((error) => {
+           initializationPromise = null
+           reject(error)
+         })
       }
     })
   })
@@ -238,37 +277,32 @@ const runMigrations = async (): Promise<void> => {
     const database = getDatabase()
     
     // Check if printer_profiles column exists in app_settings table
-    database.get("PRAGMA table_info(app_settings)", (err, rows) => {
+    database.all("PRAGMA table_info(app_settings)", (err, columns) => {
       if (err) {
         reject(err)
         return
       }
       
-      // Check if printer_profiles column exists
-      database.all("PRAGMA table_info(app_settings)", (err, columns) => {
-        if (err) {
-          reject(err)
-          return
+      const hasPrinterProfiles = columns.some((col: any) => col.name === 'printer_profiles')
+      
+      if (!hasPrinterProfiles) {
+        console.log('Adding printer_profiles column to app_settings table...')
+        database.run('ALTER TABLE app_settings ADD COLUMN printer_profiles TEXT DEFAULT "[]"', (err) => {
+          if (err) {
+            console.error('Error adding printer_profiles column:', err)
+            reject(err)
+          } else {
+            console.log('printer_profiles column added successfully')
+            resolve()
+          }
+        })
+      } else {
+        // Only log once per process to reduce noise
+        if (!global.migrationLogged) {
+          global.migrationLogged = true
         }
-        
-        const hasPrinterProfiles = columns.some((col: any) => col.name === 'printer_profiles')
-        
-        if (!hasPrinterProfiles) {
-          console.log('Adding printer_profiles column to app_settings table...')
-          database.run('ALTER TABLE app_settings ADD COLUMN printer_profiles TEXT DEFAULT "[]"', (err) => {
-            if (err) {
-              console.error('Error adding printer_profiles column:', err)
-              reject(err)
-            } else {
-              console.log('printer_profiles column added successfully')
-              resolve()
-            }
-          })
-        } else {
-          console.log('printer_profiles column already exists')
-          resolve()
-        }
-      })
+        resolve()
+      }
     })
   })
 }
@@ -572,7 +606,7 @@ export interface PrintJob {
   printer_id: number
   quantity: number
   estimated_print_time: number
-  status: "Queued" | "Printing" | "Completed" | "Failed"
+  status: "Pending" | "Printing" | "Completed" | "Failed" | "Cancelled"
   started_at?: string | null
   completed_at?: string | null
   created_at: string

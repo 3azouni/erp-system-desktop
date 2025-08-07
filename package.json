@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "next build",
-    "dev": "next dev",
+    "dev": "NODE_OPTIONS='--no-deprecation' next dev",
     "lint": "next lint",
     "start": "next start",
     "setup-db": "node scripts/setup-local-db.js",
@@ -52,6 +52,7 @@
     "embla-carousel-react": "^8.0.0",
     "input-otp": "^1.0.1",
     "jsonwebtoken": "^9.0.2",
+    "lightweight-charts": "^5.0.8",
     "lucide-react": "^0.454.0",
     "next": "14.2.16",
     "next-themes": "^0.2.1",
@@ -104,4 +105,4 @@
       "icon": "public/icon.ico"
     }
   }
-} 
+}
