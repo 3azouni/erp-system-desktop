@@ -265,6 +265,7 @@ export function OrderFormModal({ open, onOpenChange, order, onSave }: OrderFormM
       return
     }
 
+<<<<<<< HEAD
     // Check if any product quantity exceeds available stock
     const productsExceedingStock = orderedProducts.filter(product => 
       product.availability_status === 'available' && product.quantity > (product.available_stock || 0)
@@ -280,6 +281,8 @@ export function OrderFormModal({ open, onOpenChange, order, onSave }: OrderFormM
       return
     }
 
+=======
+>>>>>>> a1c4a974a89eea540ea4d39390eeb0af1d36aed5
     setLoading(true)
 
     try {
@@ -525,7 +528,11 @@ export function OrderFormModal({ open, onOpenChange, order, onSave }: OrderFormM
                           <X className="h-4 w-4" />
                         </Button>
                       </div>
+<<<<<<< HEAD
                       <div className="grid gap-4 md:grid-cols-5" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
+=======
+                      <div className="grid gap-4 md:grid-cols-4" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+>>>>>>> a1c4a974a89eea540ea4d39390eeb0af1d36aed5
                         <div className="space-y-2">
                           <Label>Product</Label>
                           <Select
@@ -546,6 +553,7 @@ export function OrderFormModal({ open, onOpenChange, order, onSave }: OrderFormM
                           </Select>
                         </div>
                         <div className="space-y-2">
+<<<<<<< HEAD
                           <Label>Available Stock</Label>
                           <div className={`flex items-center h-10 px-3 py-2 border rounded-md ${
                             product.availability_status === 'available' 
@@ -563,6 +571,8 @@ export function OrderFormModal({ open, onOpenChange, order, onSave }: OrderFormM
                           </div>
                         </div>
                         <div className="space-y-2">
+=======
+>>>>>>> a1c4a974a89eea540ea4d39390eeb0af1d36aed5
                           <Label>Quantity</Label>
                           <div className="flex items-center gap-2">
                             <Button
@@ -570,7 +580,10 @@ export function OrderFormModal({ open, onOpenChange, order, onSave }: OrderFormM
                               variant="outline"
                               size="sm"
                               onClick={() => updateProduct(index, "quantity", Math.max(1, product.quantity - 1))}
+<<<<<<< HEAD
                               disabled={product.availability_status === 'out_of_stock'}
+=======
+>>>>>>> a1c4a974a89eea540ea4d39390eeb0af1d36aed5
                             >
                               <Minus className="h-4 w-4" />
                             </Button>
@@ -581,29 +594,54 @@ export function OrderFormModal({ open, onOpenChange, order, onSave }: OrderFormM
                               min="1"
                               value={product.quantity}
                               onChange={(e) => updateProduct(index, "quantity", Number.parseInt(e.target.value) || 1)}
+<<<<<<< HEAD
                               className={`text-center ${
                                 product.availability_status === 'available' && product.quantity > (product.available_stock || 0)
                                   ? 'border-red-500 bg-red-50'
                                   : ''
                               }`}
                               disabled={product.availability_status === 'out_of_stock'}
+=======
+                              className="text-center"
+>>>>>>> a1c4a974a89eea540ea4d39390eeb0af1d36aed5
                             />
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
                               onClick={() => updateProduct(index, "quantity", product.quantity + 1)}
+<<<<<<< HEAD
                               disabled={product.availability_status === 'out_of_stock'}
+=======
+>>>>>>> a1c4a974a89eea540ea4d39390eeb0af1d36aed5
                             >
                               <Plus className="h-4 w-4" />
                             </Button>
                           </div>
+<<<<<<< HEAD
                           {product.availability_status === 'available' && product.quantity > (product.available_stock || 0) && (
                             <div className="text-xs text-red-600 mt-1">
                               ⚠️ Quantity exceeds available stock
                             </div>
                           )}
                         </div>
+=======
+                        </div>
+                        {product.availability_message && (
+                          <div className="space-y-2" style={{ gridColumn: '1 / -1' }}>
+                            <Label>Availability Status</Label>
+                            <div className={`p-3 rounded-md text-sm ${
+                              product.availability_status === 'available' 
+                                ? 'bg-green-50 text-green-700 border border-green-200' 
+                                : product.availability_status === 'in_production'
+                                ? 'bg-yellow-50 text-yellow-700 border border-yellow-200'
+                                : 'bg-red-50 text-red-700 border border-red-200'
+                            }`}>
+                              {product.availability_message}
+                            </div>
+                          </div>
+                        )}
+>>>>>>> a1c4a974a89eea540ea4d39390eeb0af1d36aed5
                         <div className="space-y-2">
                           <Label>Unit Price</Label>
                           <Input
@@ -619,10 +657,15 @@ export function OrderFormModal({ open, onOpenChange, order, onSave }: OrderFormM
                         <div className="space-y-2">
                           <Label>Total Price</Label>
                           <div className="flex items-center h-10 px-3 py-2 border rounded-md bg-muted">
+<<<<<<< HEAD
+=======
+                            {/* Removed formatCurrency as it's no longer imported */}
+>>>>>>> a1c4a974a89eea540ea4d39390eeb0af1d36aed5
                             {product.total_price}
                           </div>
                         </div>
                       </div>
+<<<<<<< HEAD
                       {product.availability_message && (
                         <div className="mt-3">
                           <div className={`p-3 rounded-md text-sm ${
@@ -636,6 +679,8 @@ export function OrderFormModal({ open, onOpenChange, order, onSave }: OrderFormM
                           </div>
                         </div>
                       )}
+=======
+>>>>>>> a1c4a974a89eea540ea4d39390eeb0af1d36aed5
                     </div>
                   ))}
                 </div>

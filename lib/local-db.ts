@@ -3,6 +3,7 @@ import path from 'path'
 import fs from 'fs'
 import bcrypt from 'bcryptjs'
 
+<<<<<<< HEAD
 // Add type declaration for global object
 declare global {
   var db: sqlite3.Database | null
@@ -13,6 +14,8 @@ declare global {
   var availabilityService: any
 }
 
+=======
+>>>>>>> a1c4a974a89eea540ea4d39390eeb0af1d36aed5
 // Database file path in user's documents folder
 const getDbPath = () => {
   const userDocuments = path.join(process.env.USERPROFILE || '', 'Documents')
@@ -244,6 +247,7 @@ export const initializeDatabase = async (): Promise<void> => {
         reserved_stock INTEGER NOT NULL DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+<<<<<<< HEAD
         FOREIGN KEY (component_id) REFERENCES components(id) ON DELETE CASCADE
       );
 
@@ -255,6 +259,9 @@ export const initializeDatabase = async (): Promise<void> => {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+=======
+        FOREIGN KEY (component_id) REFERENCES components (id) ON DELETE CASCADE
+>>>>>>> a1c4a974a89eea540ea4d39390eeb0af1d36aed5
       );
     `
 
@@ -505,6 +512,7 @@ export async function updateInventoryQuantity(
   }
 }
 
+<<<<<<< HEAD
 // Function to get finished goods inventory for a product
 export async function getFinishedGoodsInventory(productId: number): Promise<number> {
   try {
@@ -703,6 +711,8 @@ export async function deductFinishedGoodsFromInventory(
   }
 }
 
+=======
+>>>>>>> a1c4a974a89eea540ea4d39390eeb0af1d36aed5
 // Database Types
 export interface Product {
   id: number
