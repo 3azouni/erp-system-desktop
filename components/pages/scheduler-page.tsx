@@ -14,32 +14,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useToast } from "@/hooks/use-toast"
-import { JobSchedulerModal } from "@/components/job-scheduler-modal"
+import { JobSchedulerModal, type PrintJob } from "@/components/job-scheduler-modal"
 import { CalendarIcon, Clock, AlertCircle, CheckCircle, Play, Pause, Edit, Trash2, Plus, MoreHorizontal, Eye, Copy, Archive, RotateCcw } from "lucide-react"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import { useSettings } from "@/contexts/settings-context"
-
-interface PrintJob {
-  id: string
-  job_id: string
-  product_id: string
-  product_name: string
-  printer_id: string
-  printer_name: string
-  quantity: number
-  priority: string
-  status: string
-  start_time: string
-  end_time: string
-  estimated_duration: number
-  actual_duration: number
-  notes: string
-  created_at: string
-  updated_at: string
-  started_at?: string
-  completed_at?: string
-}
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -94,6 +73,8 @@ export function SchedulerPage() {
   const [jobs, setJobs] = React.useState<PrintJob[]>([])
   const [loading, setLoading] = React.useState(true)
   const [isModalOpen, setIsModalOpen] = React.useState(false)
+  const [isEditModalOpen, setIsEditModalOpen] = React.useState(false)
+  const [editingJob, setEditingJob] = React.useState<PrintJob | null>(null)
   const [selectedStatus, setSelectedStatus] = React.useState("All")
 
   // Load data
@@ -200,7 +181,7 @@ export function SchedulerPage() {
 
     const totalPrintTime = jobs
       .filter((j) => j.status === "Completed")
-      .reduce((sum, job) => sum + job.estimated_duration, 0)
+      .reduce((sum, job) => sum + job.estimated_time_hours, 0)
 
     return {
       totalJobs,
@@ -306,24 +287,8 @@ export function SchedulerPage() {
   }
 
   const viewJobDetails = (job: PrintJob) => {
-    // Show job details in a modal or navigate to details page
-    const details = `
-Job ID: ${job.job_id}
-Product: ${job.product_name}
-Quantity: ${job.quantity}x
-Estimated Time: ${formatDuration(job.estimated_duration)}h
-Status: ${job.status}
-Priority: ${job.priority}
-Created: ${formatDate(job.created_at)}
-${job.started_at ? `Started: ${formatDate(job.started_at)}` : ''}
-${job.completed_at ? `Completed: ${formatDate(job.completed_at)}` : ''}
-    `.trim()
-
-    toast({
-      title: "Job Details",
-      description: details,
-      duration: 5000,
-    })
+    setEditingJob(job)
+    setIsEditModalOpen(true)
   }
 
   const duplicateJob = async (job: PrintJob) => {
@@ -342,9 +307,9 @@ ${job.completed_at ? `Completed: ${formatDate(job.completed_at)}` : ''}
         },
         body: JSON.stringify({
           product_id: parseInt(job.product_id),
-          printer_id: parseInt(job.printer_id),
+          printer_id: parseInt(job.assigned_printer_id),
           quantity: job.quantity,
-          estimated_print_time: job.estimated_duration,
+          estimated_print_time: job.estimated_time_hours,
           status: "Pending"
         }),
       })
@@ -372,13 +337,8 @@ ${job.completed_at ? `Completed: ${formatDate(job.completed_at)}` : ''}
   }
 
   const editJob = (job: PrintJob) => {
-    // For now, show a toast with edit options
-    // In a full implementation, this would open an edit modal
-    toast({
-      title: "Edit Job",
-      description: `Editing functionality for job ${job.job_id} - This would open an edit modal in a full implementation.`,
-      duration: 4000,
-    })
+    setEditingJob(job)
+    setIsEditModalOpen(true)
   }
 
   const archiveJob = async (jobId: string) => {
@@ -613,14 +573,14 @@ ${job.completed_at ? `Completed: ${formatDate(job.completed_at)}` : ''}
                     </TableCell>
                     <TableCell>
                       <div>
-                        <div className="font-medium">{job.printer_name}</div>
-                        <div className="text-sm text-muted-foreground">{job.printer_id}</div>
+                        <div className="font-medium">{job.assigned_printer_name}</div>
+                        <div className="text-sm text-muted-foreground">{job.assigned_printer_id}</div>
                       </div>
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline">{job.quantity}x</Badge>
                     </TableCell>
-                    <TableCell>{formatDuration(job.estimated_duration)}</TableCell>
+                    <TableCell>{formatDuration(job.estimated_time_hours)}</TableCell>
                     <TableCell>
                       <Badge className={getStatusColor(job.status)}>
                         <span className="flex items-center gap-1">
@@ -647,7 +607,7 @@ ${job.completed_at ? `Completed: ${formatDate(job.completed_at)}` : ''}
                     <TableCell>
                       <div className="text-sm">{job.notes || "-"}</div>
                     </TableCell>
-                    <TableCell className="text-sm">{formatDate(job.created_at)}</TableCell>
+                    <TableCell className="text-sm">{formatDate(job.created_at || new Date().toISOString())}</TableCell>
                     <TableCell className="text-right">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -674,32 +634,32 @@ ${job.completed_at ? `Completed: ${formatDate(job.completed_at)}` : ''}
                           <DropdownMenuSeparator />
                           <DropdownMenuLabel>Change Status</DropdownMenuLabel>
                           
-                          {job.status === "Pending" && (
-                            <DropdownMenuItem onClick={() => updateJobStatus(job.id, "Printing")}>
+                          {job.status === "Pending" && job.id && (
+                            <DropdownMenuItem onClick={() => updateJobStatus(job.id!, "Printing")}>
                               <Play className="mr-2 h-4 w-4" />
                               Start Printing
                             </DropdownMenuItem>
                           )}
                           
-                          {job.status === "Printing" && (
+                          {job.status === "Printing" && job.id && (
                             <>
-                              <DropdownMenuItem onClick={() => updateJobStatus(job.id, "Completed")}>
+                              <DropdownMenuItem onClick={() => updateJobStatus(job.id!, "Completed")}>
                                 <CheckCircle className="mr-2 h-4 w-4" />
                                 Mark Completed
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => updateJobStatus(job.id, "Failed")}>
+                              <DropdownMenuItem onClick={() => updateJobStatus(job.id!, "Failed")}>
                                 <AlertCircle className="mr-2 h-4 w-4" />
                                 Mark Failed
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => updateJobStatus(job.id, "Pending")}>
+                              <DropdownMenuItem onClick={() => updateJobStatus(job.id!, "Pending")}>
                                 <Pause className="mr-2 h-4 w-4" />
                                 Pause Job
                               </DropdownMenuItem>
                             </>
                           )}
                           
-                          {(job.status === "Failed" || job.status === "Completed" || job.status === "Cancelled") && (
-                            <DropdownMenuItem onClick={() => updateJobStatus(job.id, "Pending")}>
+                          {(job.status === "Failed" || job.status === "Completed" || job.status === "Cancelled") && job.id && (
+                            <DropdownMenuItem onClick={() => updateJobStatus(job.id!, "Pending")}>
                               <RotateCcw className="mr-2 h-4 w-4" />
                               Reset to Pending
                             </DropdownMenuItem>
@@ -708,8 +668,8 @@ ${job.completed_at ? `Completed: ${formatDate(job.completed_at)}` : ''}
                           <DropdownMenuSeparator />
                           
                           {/* Archive/Unarchive */}
-                          {job.status === "Completed" && (
-                            <DropdownMenuItem onClick={() => archiveJob(job.id)}>
+                          {job.status === "Completed" && job.id && (
+                            <DropdownMenuItem onClick={() => archiveJob(job.id!)}>
                               <Archive className="mr-2 h-4 w-4" />
                               Archive Job
                             </DropdownMenuItem>
@@ -724,10 +684,12 @@ ${job.completed_at ? `Completed: ${formatDate(job.completed_at)}` : ''}
                           <DropdownMenuSeparator />
                           
                           {/* Delete Job */}
-                          <DropdownMenuItem onClick={() => deleteJob(job.id)} className="text-red-600">
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete Job
-                          </DropdownMenuItem>
+                          {job.id && (
+                            <DropdownMenuItem onClick={() => deleteJob(job.id!)} className="text-red-600">
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete Job
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -741,6 +703,17 @@ ${job.completed_at ? `Completed: ${formatDate(job.completed_at)}` : ''}
 
       {/* Job Scheduler Modal */}
       <JobSchedulerModal open={isModalOpen} onOpenChange={setIsModalOpen} onSuccess={loadData} />
+      
+      {/* Edit Job Modal */}
+      <JobSchedulerModal 
+        open={isEditModalOpen} 
+        onOpenChange={setIsEditModalOpen} 
+        onSuccess={() => {
+          loadData()
+          setEditingJob(null)
+        }}
+        editingJob={editingJob}
+      />
     </div>
   )
 }

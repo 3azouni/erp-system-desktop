@@ -1,14 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
-<<<<<<< HEAD
 import { getDatabase, initializeDatabase, addFinishedGoodsToInventory } from "@/lib/local-db"
 import { verifyToken } from "@/lib/auth"
 import { availabilityService } from "@/lib/availability-service"
 import { createPrintJobNotification } from "@/lib/notifications"
-=======
-import { getDatabase, initializeDatabase } from "@/lib/local-db"
-import { verifyToken } from "@/lib/auth"
-import { availabilityService } from "@/lib/availability-service"
->>>>>>> a1c4a974a89eea540ea4d39390eeb0af1d36aed5
 
 export async function PUT(
   request: NextRequest,
@@ -51,8 +45,8 @@ export async function PUT(
     }
 
     // Update the print job
-    const updateFields = []
-    const updateValues = []
+    const updateFields: string[] = []
+    const updateValues: any[] = []
 
     if (status !== undefined) {
       updateFields.push('status = ?')
@@ -84,7 +78,6 @@ export async function PUT(
       })
     })
 
-<<<<<<< HEAD
     // If job is being completed, add finished goods to inventory
     if (status === "Completed" && currentJob.product_id && currentJob.quantity) {
       try {
@@ -98,9 +91,6 @@ export async function PUT(
         console.error("Error adding finished goods to inventory:", error)
       }
     }
-
-=======
->>>>>>> a1c4a974a89eea540ea4d39390eeb0af1d36aed5
     // Clear availability cache for the product
     if (currentJob.product_id) {
       availabilityService.clearCacheForProduct(currentJob.product_id.toString())

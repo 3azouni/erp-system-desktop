@@ -135,7 +135,6 @@ export class AvailabilityService {
   }
 
   private async getAvailableStock(productId: string): Promise<number> {
-<<<<<<< HEAD
     try {
       const database = getDatabase()
       
@@ -158,11 +157,6 @@ export class AvailabilityService {
       console.error("Error getting finished goods inventory:", error)
       return 0
     }
-=======
-    // For now, return 0 as placeholder for finished goods inventory
-    // In a real system, this would query a finished goods inventory table
-    return 0
->>>>>>> a1c4a974a89eea540ea4d39390eeb0af1d36aed5
   }
 
   private async getActivePrintJobs(productId: string): Promise<any[]> {

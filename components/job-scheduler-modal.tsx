@@ -44,9 +44,10 @@ interface JobSchedulerModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess: () => void
+  editingJob?: PrintJob | null
 }
 
-export function JobSchedulerModal({ open, onOpenChange, onSuccess }: JobSchedulerModalProps) {
+export function JobSchedulerModal({ open, onOpenChange, onSuccess, editingJob }: JobSchedulerModalProps) {
   const { toast } = useToast()
   const [loading, setLoading] = React.useState(false)
   const [dataLoading, setDataLoading] = React.useState(false)
@@ -71,8 +72,31 @@ export function JobSchedulerModal({ open, onOpenChange, onSuccess }: JobSchedule
   React.useEffect(() => {
     if (open) {
       loadData()
+      if (editingJob) {
+        // Populate form with existing job data
+        setFormData({
+          product_id: editingJob.product_id,
+          quantity: editingJob.quantity.toString(),
+          assigned_printer_id: editingJob.assigned_printer_id,
+          priority: editingJob.priority || "Normal",
+          customer_name: editingJob.customer_name || "",
+          due_date: editingJob.due_date || "",
+          notes: editingJob.notes || "",
+        })
+      } else {
+        // Reset form for new job
+        setFormData({
+          product_id: "",
+          quantity: "1",
+          assigned_printer_id: "",
+          priority: "Normal",
+          customer_name: "",
+          due_date: "",
+          notes: "",
+        })
+      }
     }
-  }, [open])
+  }, [open, editingJob])
 
   React.useEffect(() => {
     if (selectedProduct && formData.quantity && printers.length > 0) {
@@ -263,56 +287,70 @@ export function JobSchedulerModal({ open, onOpenChange, onSuccess }: JobSchedule
         throw new Error(`Insufficient materials: ${materialNames}. Please check inventory before scheduling.`)
       }
 
-      const jobId = generateJobId()
-      const estimatedTime = calculateEstimatedTime()
-
-      const jobData: PrintJob = {
-        job_id: jobId,
-        product_id: formData.product_id,
-        product_name: selectedProduct.product_name,
-        quantity: parseInt(formData.quantity),
-        assigned_printer_id: formData.assigned_printer_id,
-        assigned_printer_name: recommendedPrinter.printer_name,
-        estimated_time_hours: selectedProduct.print_time || 0,
-        total_estimated_time: estimatedTime,
-        status: "Pending",
-        priority: formData.priority as PrintJob["priority"],
-        customer_name: formData.customer_name || undefined,
-        due_date: formData.due_date || undefined,
-        notes: formData.notes || undefined,
-      }
-
       const token = localStorage.getItem("auth_token")
       if (!token) {
         throw new Error("Authentication required")
       }
 
-      const response = await fetch("/api/print-jobs", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          product_id: parseInt(formData.product_id),
-          printer_id: parseInt(formData.assigned_printer_id),
-          quantity: parseInt(formData.quantity),
-          estimated_print_time: selectedProduct.print_time || 0,
-          status: "Pending"
-        }),
-      })
+      if (editingJob) {
+        // Update existing job
+        const response = await fetch(`/api/print-jobs/${editingJob.id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            product_id: parseInt(formData.product_id),
+            printer_id: parseInt(formData.assigned_printer_id),
+            quantity: parseInt(formData.quantity),
+            estimated_print_time: selectedProduct.print_time || 0,
+            priority: formData.priority,
+            customer_name: formData.customer_name || null,
+            due_date: formData.due_date || null,
+            notes: formData.notes || null,
+          }),
+        })
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to create print job")
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || "Failed to update print job")
+        }
+
+        toast({
+          title: "Job updated successfully!",
+          description: `Job ${editingJob.job_id} has been updated.`,
+        })
+      } else {
+        // Create new job
+        const jobId = generateJobId()
+        const estimatedTime = calculateEstimatedTime()
+
+        const response = await fetch("/api/print-jobs", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            product_id: parseInt(formData.product_id),
+            printer_id: parseInt(formData.assigned_printer_id),
+            quantity: parseInt(formData.quantity),
+            estimated_print_time: selectedProduct.print_time || 0,
+            status: "Pending"
+          }),
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || "Failed to create print job")
+        }
+
+        toast({
+          title: "Job scheduled successfully!",
+          description: `Job ${jobId} has been added to the queue.`,
+        })
       }
-
-      const result = await response.json()
-
-      toast({
-        title: "Job scheduled successfully!",
-        description: `Job ${jobId} has been added to the queue.`,
-      })
 
       onSuccess()
       onOpenChange(false)
@@ -380,9 +418,12 @@ export function JobSchedulerModal({ open, onOpenChange, onSuccess }: JobSchedule
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Schedule New Print Job</DialogTitle>
+          <DialogTitle>{editingJob ? `Edit Print Job - ${editingJob.job_id}` : "Schedule New Print Job"}</DialogTitle>
           <DialogDescription>
-            Select a product and quantity, then assign to an available printer for production
+            {editingJob 
+              ? "Update the job details and reassign to an available printer"
+              : "Select a product and quantity, then assign to an available printer for production"
+            }
           </DialogDescription>
         </DialogHeader>
 

@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Plus, Trash2, Save, Settings, DollarSign, Palette, Printer, Download } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { useSettings } from "@/contexts/settings-context"
 import { useToast } from "@/hooks/use-toast"
 import type { PrinterProfile } from "@/lib/local-db"
@@ -25,11 +26,13 @@ export function SettingsPage() {
     platform_fee_percentage: 3.0,
     misc_buffer_percentage: 5.0,
     currency: "USD",
+    usd_to_lbp_rate: 89.5,
     app_name: "3DP Commander",
     app_logo_url: "",
     footer_text: "Powered by 3DP Commander - 3D Printing Business Management",
     printer_profiles: [] as PrinterProfile[],
   })
+  const [actualPrinters, setActualPrinters] = useState<any[]>([])
 
   useEffect(() => {
     if (settings && !loading) {
@@ -40,13 +43,30 @@ export function SettingsPage() {
         platform_fee_percentage: settings.platform_fee_percentage || 3.0,
         misc_buffer_percentage: settings.misc_buffer_percentage || 5.0,
         currency: settings.currency || "USD",
+        usd_to_lbp_rate: settings.usd_to_lbp_rate || 89.5,
         app_name: settings.app_name || "3DP Commander",
         app_logo_url: settings.app_logo_url || "",
         footer_text: settings.footer_text || "Powered by 3DP Commander - 3D Printing Business Management",
-        printer_profiles: settings.printer_profiles || [], // TODO: Replace with local-db logic
+        printer_profiles: settings.printer_profiles || [],
       })
     }
   }, [settings, loading])
+
+  // Load actual printers from database
+  useEffect(() => {
+    const loadActualPrinters = async () => {
+      try {
+        const response = await fetch('/api/printers')
+        if (response.ok) {
+          const data = await response.json()
+          setActualPrinters(data.printers || [])
+        }
+      } catch (error) {
+        console.error('Error loading actual printers:', error)
+      }
+    }
+    loadActualPrinters()
+  }, [])
 
   const handleSave = async () => {
     try {
@@ -304,13 +324,32 @@ export function SettingsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="USD">USD - US Dollar</SelectItem>
-                      <SelectItem value="EUR">EUR - Euro</SelectItem>
-                      <SelectItem value="GBP">GBP - British Pound</SelectItem>
-                      <SelectItem value="CAD">CAD - Canadian Dollar</SelectItem>
-                      <SelectItem value="AUD">AUD - Australian Dollar</SelectItem>
+                      <SelectItem value="LBP">LBP - Lebanese Pound</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
+                {formData.currency === "LBP" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="exchange-rate">USD to LBP Exchange Rate</Label>
+                    <Input
+                      id="exchange-rate"
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={formData.usd_to_lbp_rate?.toString() || "89.5"}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          usd_to_lbp_rate: Number.parseFloat(e.target.value) || 89.5,
+                        })
+                      }
+                      placeholder="89.5"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Current rate: 1 USD = {formData.usd_to_lbp_rate || 89.5} LBP
+                    </p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -461,6 +500,43 @@ export function SettingsPage() {
                     <p>No printer profiles configured</p>
                     <p className="text-sm">Add a printer profile to get started</p>
                   </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Actual Printers in Database</CardTitle>
+              <CardDescription>
+                These are the actual printers registered in your system
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {actualPrinters.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Printer className="mx-auto h-8 w-8 mb-2" />
+                    <p>No actual printers found</p>
+                    <p className="text-sm">Add printers from the Printers page</p>
+                  </div>
+                ) : (
+                  actualPrinters.map((printer) => (
+                    <div key={printer.id} className="border rounded-lg p-4">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h4 className="font-semibold">{printer.printer_name}</h4>
+                          <p className="text-sm text-muted-foreground">{printer.model}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Status: {printer.status} • Power: {printer.power_consumption}W • Hours: {printer.hours_printed}h
+                          </p>
+                        </div>
+                        <Badge variant={printer.status === 'Idle' ? 'default' : printer.status === 'Printing' ? 'secondary' : 'destructive'}>
+                          {printer.status}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))
                 )}
               </div>
             </CardContent>

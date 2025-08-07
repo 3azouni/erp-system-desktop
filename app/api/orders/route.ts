@@ -1,9 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-<<<<<<< HEAD
 import { getDatabase, initializeDatabase, reserveFinishedGoods, deductFinishedGoodsFromInventory } from "@/lib/local-db"
-=======
-import { getDatabase, initializeDatabase } from "@/lib/local-db"
->>>>>>> a1c4a974a89eea540ea4d39390eeb0af1d36aed5
 import { verifyToken } from "@/lib/auth"
 import { createOrderNotification } from "@/lib/notifications"
 
@@ -86,7 +82,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Required fields missing" }, { status: 400 })
     }
 
-<<<<<<< HEAD
     // Check inventory availability for all products in the order
     if (ordered_products && Array.isArray(ordered_products)) {
       for (const product of ordered_products) {
@@ -100,9 +95,6 @@ export async function POST(request: NextRequest) {
         }
       }
     }
-
-=======
->>>>>>> a1c4a974a89eea540ea4d39390eeb0af1d36aed5
     const database = getDatabase()
     
     const order = await new Promise<any>((resolve, reject) => {
@@ -131,7 +123,6 @@ export async function POST(request: NextRequest) {
       )
     })
 
-<<<<<<< HEAD
     // Deduct finished goods from inventory for all products in the order
     if (ordered_products && Array.isArray(ordered_products)) {
       for (const product of ordered_products) {
@@ -144,9 +135,6 @@ export async function POST(request: NextRequest) {
         }
       }
     }
-
-=======
->>>>>>> a1c4a974a89eea540ea4d39390eeb0af1d36aed5
     // Parse ordered_products JSON string back into array
     let parsedProducts = []
     if (order.ordered_products) {

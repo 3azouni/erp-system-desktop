@@ -10,6 +10,7 @@ import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { Calculator, DollarSign, Package, TrendingUp, AlertCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { useSettings } from "@/contexts/settings-context"
 
 interface CostCalculation {
   materialCost: number
@@ -27,23 +28,24 @@ interface CostCalculation {
 
 export function BOMPage() {
   const { toast } = useToast()
+  const { settings, formatCurrency } = useSettings()
   const [products, setProducts] = React.useState<any[]>([])
   const [selectedProduct, setSelectedProduct] = React.useState<any | null>(null)
   const [loading, setLoading] = React.useState(true)
 
-  // Form inputs
+  // Form inputs - sync with settings
   const [inputs, setInputs] = React.useState({
     filamentCostPerKg: 25.0,
     filamentUsedGrams: 50,
     printTimeHours: 2.0,
     printerWattage: 200,
-    electricityRate: 0.12,
-    laborRate: 15.0,
+    electricityRate: settings?.electricity_cost_per_kwh || 0.12,
+    laborRate: settings?.labor_rate_per_hour || 15.0,
     packagingCost: 2.0,
     shippingCost: 5.0,
-    marketingPercentage: 10,
-    platformFeePercentage: 5,
-    miscBufferPercentage: 5,
+    marketingPercentage: settings?.default_marketing_percentage || 10,
+    platformFeePercentage: settings?.platform_fee_percentage || 5,
+    miscBufferPercentage: settings?.misc_buffer_percentage || 5,
     markupMultiplier: 2.0,
   })
 
@@ -85,6 +87,20 @@ export function BOMPage() {
     }
   }, [selectedProduct])
 
+  // Sync inputs with settings when settings change
+  React.useEffect(() => {
+    if (settings) {
+      setInputs((prev) => ({
+        ...prev,
+        electricityRate: settings.electricity_cost_per_kwh || prev.electricityRate,
+        laborRate: settings.labor_rate_per_hour || prev.laborRate,
+        marketingPercentage: settings.default_marketing_percentage || prev.marketingPercentage,
+        platformFeePercentage: settings.platform_fee_percentage || prev.platformFeePercentage,
+        miscBufferPercentage: settings.misc_buffer_percentage || prev.miscBufferPercentage,
+      }))
+    }
+  }, [settings])
+
   // Calculate costs
   const calculation: CostCalculation = React.useMemo(() => {
     const materialCost = (inputs.filamentCostPerKg / 1000) * inputs.filamentUsedGrams
@@ -117,7 +133,61 @@ export function BOMPage() {
     }
   }, [inputs])
 
-  const formatCurrency = (amount: number) => `$${amount.toFixed(2)}`
+  // Use formatCurrency from settings context
+
+  const savePricingToProduct = async () => {
+    if (!selectedProduct) {
+      toast({
+        title: "No Product Selected",
+        description: "Please select a product to save the pricing to.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      const token = localStorage.getItem("auth_token")
+      if (!token) {
+        toast({
+          title: "Authentication Required",
+          description: "Please log in to save pricing.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      const response = await fetch(`/api/products/${selectedProduct.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          print_time: inputs.printTimeHours,
+          weight: inputs.filamentUsedGrams,
+          // Add pricing fields if they exist in your product schema
+          suggested_price: calculation.suggestedPrice,
+          cost_price: calculation.totalCost,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to update product")
+      }
+
+      toast({
+        title: "Pricing Saved",
+        description: `Pricing has been saved to ${selectedProduct.product_name}`,
+      })
+    } catch (error) {
+      console.error("Error saving pricing:", error)
+      toast({
+        title: "Error",
+        description: "Failed to save pricing to product.",
+        variant: "destructive",
+      })
+    }
+  }
 
   if (loading) {
     return (
@@ -140,6 +210,12 @@ export function BOMPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">BOM & Cost Calculator</h1>
           <p className="text-muted-foreground">Calculate production costs and pricing for your 3D printed products</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="text-sm">
+            Currency: {settings?.currency || "USD"}
+            {settings?.currency === "LBP" && ` (1 USD = ${settings?.usd_to_lbp_rate || 89.5} LBP)`}
+          </Badge>
         </div>
       </div>
 
@@ -470,6 +546,14 @@ export function BOMPage() {
                 onClick={() => setInputs((prev) => ({ ...prev, markupMultiplier: 3.0 }))}
               >
                 Set 3.0x Markup (Premium)
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full justify-start bg-transparent"
+                onClick={savePricingToProduct}
+                disabled={!selectedProduct}
+              >
+                Save Pricing to Selected Product
               </Button>
             </CardContent>
           </Card>

@@ -19,6 +19,7 @@ const defaultSettings: AppSettings = {
   platform_fee_percentage: 3.0,
   misc_buffer_percentage: 5.0,
   currency: "USD",
+  usd_to_lbp_rate: 89.5,
   app_name: "3DP Commander",
   app_logo_url: null,
   footer_text: "© 2024 3DP Commander. All rights reserved.",
@@ -52,8 +53,17 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const { toast } = useToast()
 
   const formatCurrency = (amount: number): string => {
-    const symbol = settings.currency === "USD" ? "$" : settings.currency === "EUR" ? "€" : "$"
-    return `${symbol}${amount.toLocaleString("en-US", {
+    if (settings.currency === "LBP") {
+      // Convert USD to LBP using configurable exchange rate
+      const exchangeRate = settings.usd_to_lbp_rate || 89.5
+      const lbpAmount = amount * exchangeRate
+      return `${lbpAmount.toLocaleString("en-US", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      })} LBP`
+    }
+    // Default to USD
+    return `$${amount.toLocaleString("en-US", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`

@@ -37,6 +37,7 @@ interface PrinterFormModalProps {
 }
 
 const PRINTER_MODELS = [
+  "Creality K1C",
   "Prusa i3 MK3S+",
   "Ender 3 V2",
   "Bambu Lab X1 Carbon",
