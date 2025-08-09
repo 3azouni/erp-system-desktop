@@ -382,13 +382,14 @@ export function ProductFormModal({ open, onOpenChange, product, onSuccess }: Pro
               }),
             })
 
-          if (response.ok) {
-            const { sku } = await response.json()
-            finalSku = sku
-          } else {
-            // Fallback to old method if SKU generation fails
-            const timestamp = Date.now().toString().slice(-6)
-            finalSku = `3DP-${timestamp}`
+            if (response.ok) {
+              const { sku } = await response.json()
+              finalSku = sku
+            } else {
+              // Fallback to old method if SKU generation fails
+              const timestamp = Date.now().toString().slice(-6)
+              finalSku = `3DP-${timestamp}`
+            }
           }
         } catch (error) {
           // Fallback to old method if SKU generation fails

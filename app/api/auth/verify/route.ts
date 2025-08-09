@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { verifyToken } from "@/lib/auth"
-import { getDatabase, initializeDatabase } from "@/lib/local-db"
+import { supabaseAdmin } from "@/lib/supabase-server"
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,29 +17,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
-    // Initialize database if needed
-    try {
-      await initializeDatabase()
-    } catch (error) {
-      console.error("Database initialization error:", error)
-    }
+    // Get user from Supabase
+    const { data: user, error: userError } = await supabaseAdmin
+      .from('users')
+      .select('*')
+      .eq('id', decoded.userId)
+      .single()
 
-    const database = getDatabase()
-    
-    // Get user from database
-    const user = await new Promise<any>((resolve, reject) => {
-      database.get(
-        'SELECT * FROM users WHERE id = ?',
-        [decoded.userId || 1],
-        (err, row) => {
-          if (err) {
-            reject(err)
-          } else {
-            resolve(row)
-          }
-        }
-      )
-    })
+    if (userError) {
+      console.error("User fetch error:", userError)
+      return NextResponse.json({ error: "User not found" }, { status: 404 })
+    }
 
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })

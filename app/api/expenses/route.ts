@@ -6,18 +6,7 @@ export async function GET(request: NextRequest) {
   try {
     const database = getDatabase()
     
-    const expenses = await new Promise<any[]>((resolve, reject) => {
-      database.all(
-        'SELECT * FROM expenses ORDER BY created_at DESC',
-        (err, rows) => {
-          if (err) {
-            reject(err)
-          } else {
-            resolve(rows || [])
-          }
-        }
-      )
-    })
+    const expenses = database.prepare('SELECT * FROM expenses ORDER BY created_at DESC').all()
 
     return NextResponse.json({ expenses })
   } catch (error) {
@@ -48,31 +37,14 @@ export async function POST(request: NextRequest) {
 
     const database = getDatabase()
     
-    const expense = await new Promise<any>((resolve, reject) => {
-      database.run(
-        `INSERT INTO expenses (expense_type, amount, date, description, vendor, receipt_url, notes, created_at, updated_at) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-        [expense_type, amount, date || new Date().toISOString().split('T')[0], description, vendor || null, receipt_url || null, notes || null],
-        function(err) {
-          if (err) {
-            reject(err)
-          } else {
-            // Get the created expense
-            database.get(
-              'SELECT * FROM expenses WHERE id = ?',
-              [this.lastID],
-              (err, expense) => {
-                if (err) {
-                  reject(err)
-                } else {
-                  resolve(expense)
-                }
-              }
-            )
-          }
-        }
-      )
-    })
+    const stmt = database.prepare(
+      `INSERT INTO expenses (expense_type, amount, date, description, vendor, receipt_url, notes, created_at, updated_at) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+    )
+    const result = stmt.run(expense_type, amount, date || new Date().toISOString().split('T')[0], description, vendor || null, receipt_url || null, notes || null)
+    
+    // Get the created expense
+    const expense = database.prepare('SELECT * FROM expenses WHERE id = ?').get(result.lastInsertRowid)
 
     return NextResponse.json({ expense }, { status: 201 })
   } catch (error) {

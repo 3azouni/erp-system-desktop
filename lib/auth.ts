@@ -1,6 +1,5 @@
 import bcrypt from "bcryptjs"
 import jwt from "jsonwebtoken"
-import { getDatabase } from "./local-db"
 
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-in-production"
 

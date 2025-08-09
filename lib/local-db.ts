@@ -1,11 +1,11 @@
-import sqlite3 from 'sqlite3'
+import Database from 'better-sqlite3'
 import path from 'path'
 import fs from 'fs'
 import bcrypt from 'bcryptjs'
 
 // Add type declaration for global object
 declare global {
-  var db: sqlite3.Database | null
+  var db: Database | null
   var dbInitialized: boolean
   var dbConnected: boolean
   var tablesCreatedLogged: boolean
@@ -32,22 +32,22 @@ const getDbPath = () => {
   return path.join(appFolder, '3dp-commander.db')
 }
 
-let db: sqlite3.Database | null = null
+let db: Database | null = null
 
-export const getDatabase = (): sqlite3.Database => {
+export const getDatabase = (): Database => {
   if (!db) {
     const dbPath = getDbPath()
-    db = new sqlite3.Database(dbPath, (err) => {
-      if (err) {
-        console.error('Error opening database:', err)
-      } else {
-        // Only log connection once per session
-        if (!global.dbConnected) {
-          console.log('Connected to local SQLite database')
-          global.dbConnected = true
-        }
+    try {
+      db = new Database(dbPath)
+      // Only log connection once per session
+      if (!global.dbConnected) {
+        console.log('Connected to local SQLite database')
+        global.dbConnected = true
       }
-    })
+    } catch (err) {
+      console.error('Error opening database:', err)
+      throw err
+    }
   }
   return db
 }
@@ -69,47 +69,48 @@ export const initializeDatabase = async (): Promise<void> => {
     return initializationPromise
   }
   
-  initializationPromise = new Promise((resolve, reject) => {
-    const database = getDatabase()
-    
-    // Enable foreign keys
-    database.run('PRAGMA foreign_keys = ON')
-    
-    // Create tables
-    const createTables = `
-      CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        email TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        full_name TEXT NOT NULL,
-        role TEXT NOT NULL DEFAULT 'viewer',
-        department TEXT NOT NULL DEFAULT 'general',
-        phone TEXT,
-        bio TEXT,
-        address TEXT,
-        city TEXT,
-        state TEXT,
-        zip TEXT,
-        is_active BOOLEAN DEFAULT 1,
-        last_login DATETIME,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
+  initializationPromise = new Promise(async (resolve, reject) => {
+    try {
+      const database = getDatabase()
+      
+      // Enable foreign keys
+      database.pragma('foreign_keys = ON')
+      
+      // Create tables
+      const createTables = `
+        CREATE TABLE IF NOT EXISTS users (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          email TEXT UNIQUE NOT NULL,
+          password_hash TEXT NOT NULL,
+          full_name TEXT NOT NULL,
+          role TEXT NOT NULL DEFAULT 'viewer',
+          department TEXT NOT NULL DEFAULT 'general',
+          phone TEXT,
+          bio TEXT,
+          address TEXT,
+          city TEXT,
+          state TEXT,
+          zip TEXT,
+          is_active BOOLEAN DEFAULT 1,
+          last_login DATETIME,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
 
-      CREATE TABLE IF NOT EXISTS products (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        product_name TEXT NOT NULL,
-        sku TEXT UNIQUE NOT NULL,
-        category TEXT NOT NULL,
-        required_materials TEXT DEFAULT '[]',
-        print_time REAL NOT NULL DEFAULT 0,
-        weight INTEGER NOT NULL DEFAULT 0,
-        printer_type TEXT NOT NULL,
-        image_url TEXT,
-        description TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
+        CREATE TABLE IF NOT EXISTS products (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          product_name TEXT NOT NULL,
+          sku TEXT UNIQUE NOT NULL,
+          category TEXT NOT NULL,
+          required_materials TEXT DEFAULT '[]',
+          print_time REAL NOT NULL DEFAULT 0,
+          weight INTEGER NOT NULL DEFAULT 0,
+          printer_type TEXT NOT NULL,
+          image_url TEXT,
+          description TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
 
       CREATE TABLE IF NOT EXISTS inventory (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -188,21 +189,21 @@ export const initializeDatabase = async (): Promise<void> => {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
 
-             CREATE TABLE IF NOT EXISTS app_settings (
-         id INTEGER PRIMARY KEY AUTOINCREMENT,
-         electricity_cost_per_kwh REAL NOT NULL DEFAULT 0.12,
-         labor_rate_per_hour REAL NOT NULL DEFAULT 25.00,
-         default_marketing_percentage REAL NOT NULL DEFAULT 10.00,
-         platform_fee_percentage REAL NOT NULL DEFAULT 5.00,
-         misc_buffer_percentage REAL NOT NULL DEFAULT 5.00,
-         currency TEXT NOT NULL DEFAULT 'USD',
-         app_name TEXT NOT NULL DEFAULT '3DP Commander',
-         app_logo_url TEXT,
-         footer_text TEXT,
-         printer_profiles TEXT DEFAULT '[]',
-         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-       );
+      CREATE TABLE IF NOT EXISTS app_settings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        electricity_cost_per_kwh REAL NOT NULL DEFAULT 0.12,
+        labor_rate_per_hour REAL NOT NULL DEFAULT 25.00,
+        default_marketing_percentage REAL NOT NULL DEFAULT 10.00,
+        platform_fee_percentage REAL NOT NULL DEFAULT 5.00,
+        misc_buffer_percentage REAL NOT NULL DEFAULT 5.00,
+        currency TEXT NOT NULL DEFAULT 'USD',
+        app_name TEXT NOT NULL DEFAULT '3DP Commander',
+        app_logo_url TEXT,
+        footer_text TEXT,
+        printer_profiles TEXT DEFAULT '[]',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
 
        CREATE TABLE IF NOT EXISTS user_notification_preferences (
          id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -216,7 +217,7 @@ export const initializeDatabase = async (): Promise<void> => {
          FOREIGN KEY (user_id) REFERENCES users (id)
        );
 
-             CREATE TABLE IF NOT EXISTS notifications (
+      CREATE TABLE IF NOT EXISTS notifications (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
         title TEXT NOT NULL,
@@ -264,187 +265,143 @@ export const initializeDatabase = async (): Promise<void> => {
       );
     `
 
-    database.exec(createTables, (err) => {
-             if (err) {
-         console.error('Error creating tables:', err)
-         initializationPromise = null
-         reject(err)
-       } else {
-         // Only log once per session
-         if (!global.tablesCreatedLogged) {
-           console.log('Database tables created successfully')
-           global.tablesCreatedLogged = true
-         }
-                 // Run migrations
-         runMigrations().then(() => {
-           insertDefaultData().then(() => {
-             // Clear availability cache when database is initialized
-             if (global.availabilityService) {
-               global.availabilityService.clearCache()
-             }
-             global.dbInitialized = true
-             initializationPromise = null
-             resolve()
-           }).catch((error) => {
-             initializationPromise = null
-             reject(error)
-           })
-         }).catch((error) => {
-           initializationPromise = null
-           reject(error)
-         })
+      try {
+        database.exec(createTables)
+        
+        // Only log once per session
+        if (!global.tablesCreatedLogged) {
+          console.log('Database tables created successfully')
+          global.tablesCreatedLogged = true
+        }
+        
+        // Run migrations
+        runMigrations().then(() => {
+          return insertDefaultData()
+        }).then(() => {
+          // Clear availability cache when database is initialized
+          if (global.availabilityService) {
+            global.availabilityService.clearCache()
+          }
+          global.dbInitialized = true
+          initializationPromise = null
+          resolve()
+        }).catch((error) => {
+          console.error('Error in database initialization:', error)
+          initializationPromise = null
+          reject(error)
+        })
+      } catch (error) {
+        console.error('Error creating tables:', error)
+        initializationPromise = null
+        reject(error)
       }
-    })
   })
 }
 
 const runMigrations = async (): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    const database = getDatabase()
-    
+  const database = getDatabase()
+  
+  try {
     // Check if printer_profiles column exists in app_settings table
-    database.all("PRAGMA table_info(app_settings)", (err, columns) => {
-      if (err) {
-        reject(err)
-        return
+    const columns = database.pragma('table_info(app_settings)')
+    const hasPrinterProfiles = columns.some((col: any) => col.name === 'printer_profiles')
+    
+    if (!hasPrinterProfiles) {
+      console.log('Adding printer_profiles column to app_settings table...')
+      database.exec('ALTER TABLE app_settings ADD COLUMN printer_profiles TEXT DEFAULT "[]"')
+      console.log('printer_profiles column added successfully')
+    } else {
+      // Only log once per process to reduce noise
+      if (!global.migrationLogged) {
+        global.migrationLogged = true
       }
-      
-      const hasPrinterProfiles = columns.some((col: any) => col.name === 'printer_profiles')
-      
-      if (!hasPrinterProfiles) {
-        console.log('Adding printer_profiles column to app_settings table...')
-        database.run('ALTER TABLE app_settings ADD COLUMN printer_profiles TEXT DEFAULT "[]"', (err) => {
-          if (err) {
-            console.error('Error adding printer_profiles column:', err)
-            reject(err)
-          } else {
-            console.log('printer_profiles column added successfully')
-            resolve()
-          }
-        })
-      } else {
-        // Only log once per process to reduce noise
-        if (!global.migrationLogged) {
-          global.migrationLogged = true
-        }
-        resolve()
-      }
-    })
-  })
+    }
+  } catch (error) {
+    console.error('Error running migrations:', error)
+    throw error
+  }
 }
 
 const insertDefaultData = async (): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    const database = getDatabase()
-    
+  const database = getDatabase()
+  
+  try {
     // Check if admin user exists
-    database.get('SELECT id FROM users WHERE email = ?', ['admin@3dpcommander.com'], async (err, row) => {
-      if (err) {
-        reject(err)
-        return
-      }
-      
-      if (!row) {
-        // Create default admin user
-        const hashedPassword = await bcrypt.hash('admin123', 12)
+    const row = database.prepare('SELECT id FROM users WHERE email = ?').get('admin@3dpcommander.com')
+    
+    if (!row) {
+      // Create default admin user
+      const hashedPassword = await bcrypt.hash('admin123', 12)
         
-        database.run(
-          'INSERT INTO users (email, password_hash, full_name, role, department, is_active) VALUES (?, ?, ?, ?, ?, ?)',
-          ['admin@3dpcommander.com', hashedPassword, 'System Administrator', 'admin', 'general', 1],
-          function(err) {
-            if (err) {
-              reject(err)
-              return
-            }
-            
-            console.log('Default admin user created')
-            
-            // Create default app settings with printer profiles
-            const defaultPrinterProfiles = JSON.stringify([
-              {
-                id: "ender3-pro",
-                name: "Ender 3 Pro",
-                power_draw_watts: 220,
-                default_print_speed: 50
-              },
-              {
-                id: "prusa-mk3s",
-                name: "Prusa i3 MK3S+",
-                power_draw_watts: 120,
-                default_print_speed: 60
-              }
-            ])
-            
-            database.run(
-              'INSERT INTO app_settings (electricity_cost_per_kwh, labor_rate_per_hour, default_marketing_percentage, platform_fee_percentage, misc_buffer_percentage, currency, app_name, footer_text, printer_profiles) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-              [0.12, 25.0, 10.0, 5.0, 5.0, 'USD', '3DP Commander', 'Powered by 3DP Commander - 3D Printing Business Management', defaultPrinterProfiles],
-              function(err) {
-                if (err) {
-                  console.error('Error creating default app settings:', err)
-                } else {
-                  console.log('Default app settings created')
-                }
-                resolve()
-              }
-            )
+      database.prepare(
+        'INSERT INTO users (email, password_hash, full_name, role, department, is_active) VALUES (?, ?, ?, ?, ?, ?)'
+      ).run('admin@3dpcommander.com', hashedPassword, 'System Administrator', 'admin', 'general', 1)
+      
+      console.log('Default admin user created')
+      
+      // Create default app settings with printer profiles
+      const defaultPrinterProfiles = JSON.stringify([
+        {
+          id: "ender3-pro",
+          name: "Ender 3 Pro",
+          power_draw_watts: 220,
+          default_print_speed: 50
+        },
+        {
+          id: "prusa-mk3s",
+          name: "Prusa i3 MK3S+",
+          power_draw_watts: 120,
+          default_print_speed: 60
+        }
+      ])
+      
+      database.prepare(
+        'INSERT INTO app_settings (electricity_cost_per_kwh, labor_rate_per_hour, default_marketing_percentage, platform_fee_percentage, misc_buffer_percentage, currency, app_name, footer_text, printer_profiles) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(0.12, 25.0, 10.0, 5.0, 5.0, 'USD', '3DP Commander', 'Powered by 3DP Commander - 3D Printing Business Management', defaultPrinterProfiles)
+      
+      console.log('Default app settings created')
+    } else {
+      // Check if app settings exist
+      const settingsRow = database.prepare('SELECT id FROM app_settings LIMIT 1').get()
+      
+      if (!settingsRow) {
+        // Create default app settings with printer profiles
+        const defaultPrinterProfiles = JSON.stringify([
+          {
+            id: "ender3-pro",
+            name: "Ender 3 Pro",
+            power_draw_watts: 220,
+            default_print_speed: 50
+          },
+          {
+            id: "prusa-mk3s",
+            name: "Prusa i3 MK3S+",
+            power_draw_watts: 120,
+            default_print_speed: 60
           }
-        )
-      } else {
-        // Check if app settings exist
-        database.get('SELECT id FROM app_settings LIMIT 1', (err, row) => {
-          if (err) {
-            console.error('Error checking app settings:', err)
-            resolve()
-            return
-          }
-          
-          if (!row) {
-            // Create default app settings with printer profiles
-            const defaultPrinterProfiles = JSON.stringify([
-              {
-                id: "ender3-pro",
-                name: "Ender 3 Pro",
-                power_draw_watts: 220,
-                default_print_speed: 50
-              },
-              {
-                id: "prusa-mk3s",
-                name: "Prusa i3 MK3S+",
-                power_draw_watts: 120,
-                default_print_speed: 60
-              }
-            ])
-            
-            database.run(
-              'INSERT INTO app_settings (electricity_cost_per_kwh, labor_rate_per_hour, default_marketing_percentage, platform_fee_percentage, misc_buffer_percentage, currency, app_name, footer_text, printer_profiles) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-              [0.12, 25.0, 10.0, 5.0, 5.0, 'USD', '3DP Commander', 'Powered by 3DP Commander - 3D Printing Business Management', defaultPrinterProfiles],
-              function(err) {
-                if (err) {
-                  console.error('Error creating default app settings:', err)
-                } else {
-                  console.log('Default app settings created')
-                }
-                resolve()
-              }
-            )
-          } else {
-            resolve()
-          }
-        })
+        ])
+        
+        database.prepare(
+          'INSERT INTO app_settings (electricity_cost_per_kwh, labor_rate_per_hour, default_marketing_percentage, platform_fee_percentage, misc_buffer_percentage, currency, app_name, footer_text, printer_profiles) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        ).run(0.12, 25.0, 10.0, 5.0, 5.0, 'USD', '3DP Commander', 'Powered by 3DP Commander - 3D Printing Business Management', defaultPrinterProfiles)
+        
+        console.log('Default app settings created')
       }
-    })
-  })
+    }
+  } catch (error) {
+    console.error('Error inserting default data:', error)
+    throw error
+  }
 }
 
 export const closeDatabase = (): void => {
   if (db) {
-    db.close((err) => {
-      if (err) {
-        console.error('Error closing database:', err)
-      } else {
-        console.log('Database connection closed')
-      }
-    })
+    try {
+      db.close()
+      console.log('Database connection closed')
+    } catch (err) {
+      console.error('Error closing database:', err)
+    }
     db = null
   }
 }
@@ -459,19 +416,7 @@ export async function updateInventoryQuantity(
     const database = getDatabase()
     
     // Get current inventory item
-    const inventoryItem = await new Promise<any>((resolve, reject) => {
-      database.get(
-        'SELECT * FROM inventory WHERE id = ?',
-        [materialId],
-        (err, row) => {
-          if (err) {
-            reject(err)
-          } else {
-            resolve(row)
-          }
-        }
-      )
-    })
+    const inventoryItem = database.prepare('SELECT * FROM inventory WHERE id = ?').get(materialId)
 
     if (!inventoryItem) {
       return { success: false }
@@ -483,19 +428,9 @@ export async function updateInventoryQuantity(
     const newStatus = calculateInventoryStatus(newQuantity, inventoryItem.minimum_threshold)
 
     // Update inventory quantity and status
-    await new Promise<void>((resolve, reject) => {
-      database.run(
-        'UPDATE inventory SET quantity_available = ?, status = ?, updated_at = datetime("now") WHERE id = ?',
-        [newQuantity, newStatus, materialId],
-        function(err) {
-          if (err) {
-            reject(err)
-          } else {
-            resolve()
-          }
-        }
-      )
-    })
+    database.prepare(
+      'UPDATE inventory SET quantity_available = ?, status = ?, updated_at = datetime("now") WHERE id = ?'
+    ).run(newQuantity, newStatus, materialId)
 
     // Check if status changed to low or out of stock
     const wasLowStock = (oldStatus === "Normal" && (newStatus === "Low" || newStatus === "Out"))
@@ -516,19 +451,7 @@ export async function getFinishedGoodsInventory(productId: number): Promise<numb
   try {
     const database = getDatabase()
     
-    const result = await new Promise<any>((resolve, reject) => {
-      database.get(
-        'SELECT quantity_available FROM finished_goods_inventory WHERE product_id = ?',
-        [productId],
-        (err, row) => {
-          if (err) {
-            reject(err)
-          } else {
-            resolve(row)
-          }
-        }
-      )
-    })
+    const result = database.prepare('SELECT quantity_available FROM finished_goods_inventory WHERE product_id = ?').get(productId)
 
     return result ? result.quantity_available : 0
   } catch (error) {
@@ -546,53 +469,21 @@ export async function addFinishedGoodsToInventory(
     const database = getDatabase()
     
     // Check if inventory record exists for this product
-    const existingRecord = await new Promise<any>((resolve, reject) => {
-      database.get(
-        'SELECT * FROM finished_goods_inventory WHERE product_id = ?',
-        [productId],
-        (err, row) => {
-          if (err) {
-            reject(err)
-          } else {
-            resolve(row)
-          }
-        }
-      )
-    })
+    const existingRecord = database.prepare('SELECT * FROM finished_goods_inventory WHERE product_id = ?').get(productId)
 
     if (existingRecord) {
       // Update existing record
       const newQuantity = existingRecord.quantity_available + quantity
-      await new Promise<void>((resolve, reject) => {
-        database.run(
-          'UPDATE finished_goods_inventory SET quantity_available = ?, updated_at = datetime("now") WHERE product_id = ?',
-          [newQuantity, productId],
-          function(err) {
-            if (err) {
-              reject(err)
-            } else {
-              resolve()
-            }
-          }
-        )
-      })
+      database.prepare(
+        'UPDATE finished_goods_inventory SET quantity_available = ?, updated_at = datetime("now") WHERE product_id = ?'
+      ).run(newQuantity, productId)
       
       return { success: true, newQuantity }
     } else {
       // Create new record
-      await new Promise<void>((resolve, reject) => {
-        database.run(
-          'INSERT INTO finished_goods_inventory (product_id, quantity_available, created_at, updated_at) VALUES (?, ?, datetime("now"), datetime("now"))',
-          [productId, quantity],
-          function(err) {
-            if (err) {
-              reject(err)
-            } else {
-              resolve()
-            }
-          }
-        )
-      })
+      database.prepare(
+        'INSERT INTO finished_goods_inventory (product_id, quantity_available, created_at, updated_at) VALUES (?, ?, datetime("now"), datetime("now"))'
+      ).run(productId, quantity)
       
       return { success: true, newQuantity: quantity }
     }
@@ -667,19 +558,7 @@ export async function deductFinishedGoodsFromInventory(
     const database = getDatabase()
     
     // Get current inventory
-    const inventoryRecord = await new Promise<any>((resolve, reject) => {
-      database.get(
-        'SELECT quantity_available, reserved_quantity FROM finished_goods_inventory WHERE product_id = ?',
-        [productId],
-        (err, row) => {
-          if (err) {
-            reject(err)
-          } else {
-            resolve(row)
-          }
-        }
-      )
-    })
+    const inventoryRecord = database.prepare('SELECT quantity_available, reserved_quantity FROM finished_goods_inventory WHERE product_id = ?').get(productId)
 
     if (!inventoryRecord) {
       return { success: false }
@@ -688,19 +567,9 @@ export async function deductFinishedGoodsFromInventory(
     const newQuantity = Math.max(0, inventoryRecord.quantity_available - quantity)
     const newReservedQuantity = Math.max(0, inventoryRecord.reserved_quantity - quantity)
     
-    await new Promise<void>((resolve, reject) => {
-      database.run(
-        'UPDATE finished_goods_inventory SET quantity_available = ?, reserved_quantity = ?, updated_at = datetime("now") WHERE product_id = ?',
-        [newQuantity, newReservedQuantity, productId],
-        function(err) {
-          if (err) {
-            reject(err)
-          } else {
-            resolve()
-          }
-        }
-      )
-    })
+    database.prepare(
+      'UPDATE finished_goods_inventory SET quantity_available = ?, reserved_quantity = ?, updated_at = datetime("now") WHERE product_id = ?'
+    ).run(newQuantity, newReservedQuantity, productId)
     
     return { success: true, newQuantity }
   } catch (error) {

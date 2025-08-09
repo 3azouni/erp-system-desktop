@@ -25,19 +25,9 @@ export async function GET(request: NextRequest) {
     const database = getDatabase()
     
     // Get notifications for the current user
-    const notifications = await new Promise<any[]>((resolve, reject) => {
-      database.all(
-        'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50',
-        [decoded.userId || 1],
-        (err, rows) => {
-          if (err) {
-            reject(err)
-          } else {
-            resolve(rows || [])
-          }
-        }
-      )
-    })
+    const notifications = database.prepare(
+      'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50'
+    ).all(decoded.userId || 1)
 
     return NextResponse.json({ notifications })
   } catch (error) {
@@ -76,31 +66,14 @@ export async function POST(request: NextRequest) {
     const database = getDatabase()
     
     // Create new notification
-    const notification = await new Promise<any>((resolve, reject) => {
-      database.run(
-        `INSERT INTO notifications (user_id, title, message, type, data, created_at, updated_at) 
-         VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-        [decoded.userId || 1, title, message, type, data ? JSON.stringify(data) : null],
-        function(err) {
-          if (err) {
-            reject(err)
-          } else {
-            // Get the created notification
-            database.get(
-              'SELECT * FROM notifications WHERE id = ?',
-              [this.lastID],
-              (err, notification) => {
-                if (err) {
-                  reject(err)
-                } else {
-                  resolve(notification)
-                }
-              }
-            )
-          }
-        }
-      )
-    })
+    const stmt = database.prepare(
+      `INSERT INTO notifications (user_id, title, message, type, data, created_at, updated_at) 
+       VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+    )
+    const result = stmt.run(decoded.userId || 1, title, message, type, data ? JSON.stringify(data) : null)
+    
+    // Get the created notification
+    const notification = database.prepare('SELECT * FROM notifications WHERE id = ?').get(result.lastInsertRowid)
 
     return NextResponse.json({ notification }, { status: 201 })
   } catch (error) {

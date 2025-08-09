@@ -14,18 +14,7 @@ export async function GET(request: NextRequest) {
 
     const database = getDatabase()
     
-    const orders = await new Promise<any[]>((resolve, reject) => {
-      database.all(
-        'SELECT * FROM orders ORDER BY created_at DESC',
-        (err, rows) => {
-          if (err) {
-            reject(err)
-          } else {
-            resolve(rows || [])
-          }
-        }
-      )
-    })
+    const orders = database.prepare('SELECT * FROM orders ORDER BY created_at DESC').all()
 
     // Parse ordered_products JSON strings back into arrays
     const parsedOrders = orders.map(order => {
@@ -97,31 +86,14 @@ export async function POST(request: NextRequest) {
     }
     const database = getDatabase()
     
-    const order = await new Promise<any>((resolve, reject) => {
-      database.run(
-        `INSERT INTO orders (order_id, customer_name, customer_email, customer_phone, source, ordered_products, total_quantity, total_amount, status, tracking_number, shipping_address, notes, order_date, created_at, updated_at) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, date('now'), datetime('now'), datetime('now'))`,
-        [order_id, customer_name, customer_email || null, customer_phone || null, source, JSON.stringify(ordered_products || []), total_quantity || 0, total_amount || 0, status || 'New', tracking_number || null, shipping_address || null, notes || null],
-        function(err) {
-          if (err) {
-            reject(err)
-          } else {
-            // Get the created order
-            database.get(
-              'SELECT * FROM orders WHERE id = ?',
-              [this.lastID],
-              (err, order) => {
-                if (err) {
-                  reject(err)
-                } else {
-                  resolve(order)
-                }
-              }
-            )
-          }
-        }
-      )
-    })
+    const stmt = database.prepare(
+      `INSERT INTO orders (order_id, customer_name, customer_email, customer_phone, source, ordered_products, total_quantity, total_amount, status, tracking_number, shipping_address, notes, order_date, created_at, updated_at) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, date('now'), datetime('now'), datetime('now'))`
+    )
+    const result = stmt.run(order_id, customer_name, customer_email || null, customer_phone || null, source, JSON.stringify(ordered_products || []), total_quantity || 0, total_amount || 0, status || 'New', tracking_number || null, shipping_address || null, notes || null)
+    
+    // Get the created order
+    const order = database.prepare('SELECT * FROM orders WHERE id = ?').get(result.lastInsertRowid)
 
     // Deduct finished goods from inventory for all products in the order
     if (ordered_products && Array.isArray(ordered_products)) {

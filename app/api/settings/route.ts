@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { verifyToken } from "@/lib/auth"
-import { getDatabase, initializeDatabase } from "@/lib/local-db"
+import { supabaseAdmin } from "@/lib/supabase-server"
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,28 +15,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
-    // Initialize database if needed
-    try {
-      await initializeDatabase()
-    } catch (error) {
-      console.error("Database initialization error:", error)
-    }
+    // Get settings from Supabase
+    const { data: settings, error: settingsError } = await supabaseAdmin
+      .from('app_settings')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
 
-    const database = getDatabase()
-    
-    // Get settings from database
-    const settings = await new Promise<any>((resolve, reject) => {
-      database.get(
-        'SELECT * FROM app_settings ORDER BY id DESC LIMIT 1',
-        (err, row) => {
-          if (err) {
-            reject(err)
-          } else {
-            resolve(row)
-          }
-        }
-      )
-    })
+    if (settingsError && settingsError.code !== 'PGRST116') {
+      console.error("Settings fetch error:", settingsError)
+      throw new Error("Failed to fetch settings")
+    }
 
     if (!settings) {
       // Return default settings if none exist
@@ -109,106 +99,77 @@ export async function PUT(request: NextRequest) {
 
     const body = await request.json()
 
-    // Initialize database if needed
-    try {
-      await initializeDatabase()
-    } catch (error) {
-      console.error("Database initialization error:", error)
-    }
+    // Check if settings exist in Supabase
+    const { data: existingSettings, error: checkError } = await supabaseAdmin
+      .from('app_settings')
+      .select('id')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
 
-    const database = getDatabase()
-    
-    // Check if settings exist
-    const existingSettings = await new Promise<any>((resolve, reject) => {
-      database.get(
-        'SELECT id FROM app_settings ORDER BY id DESC LIMIT 1',
-        (err, row) => {
-          if (err) {
-            reject(err)
-          } else {
-            resolve(row)
-          }
-        }
-      )
-    })
+    if (checkError && checkError.code !== 'PGRST116') {
+      console.error("Settings check error:", checkError)
+      throw new Error("Failed to check settings")
+    }
 
     if (existingSettings) {
-      // Update existing settings
-      await new Promise<void>((resolve, reject) => {
-        database.run(
-          `UPDATE app_settings SET 
-           electricity_cost_per_kwh = ?, labor_rate_per_hour = ?, 
-           default_marketing_percentage = ?, platform_fee_percentage = ?, 
-           misc_buffer_percentage = ?, currency = ?, app_name = ?, 
-           app_logo_url = ?, footer_text = ?, printer_profiles = ?, updated_at = datetime('now')
-           WHERE id = ?`,
-          [
-            body.electricity_cost_per_kwh || 0.12,
-            body.labor_rate_per_hour || 25.0,
-            body.default_marketing_percentage || 10.0,
-            body.platform_fee_percentage || 5.0,
-            body.misc_buffer_percentage || 5.0,
-            body.currency || "USD",
-            body.app_name || "3DP Commander",
-            body.app_logo_url || null,
-            body.footer_text || "© 2024 3DP Commander. All rights reserved.",
-            JSON.stringify(body.printer_profiles || []),
-            existingSettings.id
-          ],
-          function(err) {
-            if (err) {
-              reject(err)
-            } else {
-              resolve()
-            }
-          }
-        )
-      })
+      // Update existing settings in Supabase
+      const { error: updateError } = await supabaseAdmin
+        .from('app_settings')
+        .update({
+          electricity_cost_per_kwh: body.electricity_cost_per_kwh || 0.12,
+          labor_rate_per_hour: body.labor_rate_per_hour || 25.0,
+          default_marketing_percentage: body.default_marketing_percentage || 10.0,
+          platform_fee_percentage: body.platform_fee_percentage || 5.0,
+          misc_buffer_percentage: body.misc_buffer_percentage || 5.0,
+          currency: body.currency || "USD",
+          app_name: body.app_name || "3DP Commander",
+          app_logo_url: body.app_logo_url || null,
+          footer_text: body.footer_text || "© 2024 3DP Commander. All rights reserved.",
+          printer_profiles: body.printer_profiles || [],
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existingSettings.id)
+
+      if (updateError) {
+        console.error("Settings update error:", updateError)
+        throw new Error("Failed to update settings")
+      }
     } else {
-      // Insert new settings
-      await new Promise<void>((resolve, reject) => {
-        database.run(
-          `INSERT INTO app_settings 
-           (electricity_cost_per_kwh, labor_rate_per_hour, default_marketing_percentage, 
-            platform_fee_percentage, misc_buffer_percentage, currency, app_name, 
-            app_logo_url, footer_text, printer_profiles, created_at, updated_at) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-          [
-            body.electricity_cost_per_kwh || 0.12,
-            body.labor_rate_per_hour || 25.0,
-            body.default_marketing_percentage || 10.0,
-            body.platform_fee_percentage || 5.0,
-            body.misc_buffer_percentage || 5.0,
-            body.currency || "USD",
-            body.app_name || "3DP Commander",
-            body.app_logo_url || null,
-            body.footer_text || "© 2024 3DP Commander. All rights reserved.",
-            JSON.stringify(body.printer_profiles || [])
-          ],
-          function(err) {
-            if (err) {
-              reject(err)
-            } else {
-              resolve()
-            }
-          }
-        )
-      })
+      // Insert new settings in Supabase
+      const { error: insertError } = await supabaseAdmin
+        .from('app_settings')
+        .insert({
+          electricity_cost_per_kwh: body.electricity_cost_per_kwh || 0.12,
+          labor_rate_per_hour: body.labor_rate_per_hour || 25.0,
+          default_marketing_percentage: body.default_marketing_percentage || 10.0,
+          platform_fee_percentage: body.platform_fee_percentage || 5.0,
+          misc_buffer_percentage: body.misc_buffer_percentage || 5.0,
+          currency: body.currency || "USD",
+          app_name: body.app_name || "3DP Commander",
+          app_logo_url: body.app_logo_url || null,
+          footer_text: body.footer_text || "© 2024 3DP Commander. All rights reserved.",
+          printer_profiles: body.printer_profiles || []
+        })
+
+      if (insertError) {
+        console.error("Settings insert error:", insertError)
+        throw new Error("Failed to insert settings")
+      }
     }
 
-    // Get updated settings
-    const updatedSettings = await new Promise<any>((resolve, reject) => {
-      database.get(
-        'SELECT * FROM app_settings ORDER BY id DESC LIMIT 1',
-        (err, row) => {
-          if (err) {
-            reject(err)
-          } else {
-            resolve(row)
-          }
-        }
-      )
-    })
+    // Get updated settings from Supabase
+    const { data: updatedSettings, error: fetchError } = await supabaseAdmin
+      .from('app_settings')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
+
+    if (fetchError) {
+      console.error("Settings fetch error:", fetchError)
+      throw new Error("Failed to fetch updated settings")
+    }
 
     // Parse printer_profiles JSON if it exists
     let printerProfiles = []

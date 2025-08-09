@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
 import bcrypt from "bcryptjs"
-import { getDatabase, initializeDatabase } from "@/lib/local-db"
+import { supabaseAdmin } from "@/lib/supabase-server"
 import { generateToken } from "@/lib/auth"
 
 interface UserRow {
-  id: number
+  id: string
   email: string
   password_hash: string
   full_name: string
@@ -25,63 +25,48 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Email and password are required" }, { status: 400 })
     }
 
-    // Initialize database if needed
-    try {
-      await initializeDatabase()
-    } catch (error) {
-      console.error("Database initialization error:", error)
+    // Query user from Supabase
+    const { data: userRow, error: dbError } = await supabaseAdmin
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .eq('is_active', true)
+      .single()
+
+    if (dbError) {
+      console.error("Database error:", dbError)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
     }
 
-    const database = getDatabase()
+    if (!userRow) {
+      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
+    }
 
-    // Regular user authentication
-    return new Promise<NextResponse>((resolve) => {
-      database.get(
-        'SELECT * FROM users WHERE email = ? AND is_active = 1',
-        [email],
-        async (err, userRow: UserRow) => {
-          if (err) {
-            console.error("Database error:", err)
-            resolve(NextResponse.json({ error: "Database error" }, { status: 500 }))
-            return
-          }
+    // Proper password verification using bcrypt
+    const isValidPassword = await bcrypt.compare(password, userRow.password_hash)
+    if (!isValidPassword) {
+      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
+    }
 
-          if (!userRow) {
-            resolve(NextResponse.json({ error: "Invalid credentials" }, { status: 401 }))
-            return
-          }
+    // Generate JWT token
+    const user = {
+      id: userRow.id,
+      email: userRow.email,
+      full_name: userRow.full_name,
+      role: userRow.role,
+      department: userRow.department,
+      created_at: userRow.created_at,
+      updated_at: userRow.updated_at,
+    }
+    const token = generateToken(user)
 
-          // Proper password verification using bcrypt
-          const isValidPassword = await bcrypt.compare(password, userRow.password_hash)
-          if (!isValidPassword) {
-            resolve(NextResponse.json({ error: "Invalid credentials" }, { status: 401 }))
-            return
-          }
+    // TODO: Fetch permissions from Supabase if you have a permissions table
+    const permissions: any[] = [] // Replace with actual permissions logic
 
-          // Generate JWT token
-          const user = {
-            id: userRow.id.toString(),
-            email: userRow.email,
-            full_name: userRow.full_name,
-            role: userRow.role,
-            department: userRow.department,
-            created_at: userRow.created_at,
-            updated_at: userRow.updated_at,
-          }
-          const token = generateToken(user)
-
-          // TODO: Fetch permissions from local DB if you have a permissions table
-          const permissions: any[] = [] // Replace with actual permissions logic
-
-          resolve(
-            NextResponse.json({
-              user,
-              token,
-              permissions,
-            })
-          )
-        }
-      )
+    return NextResponse.json({
+      user,
+      token,
+      permissions,
     })
   } catch (error) {
     console.error("Login API error:", error)

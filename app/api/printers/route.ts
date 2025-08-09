@@ -14,18 +14,7 @@ export async function GET(request: NextRequest) {
 
     const database = getDatabase()
     
-    const printers = await new Promise<any[]>((resolve, reject) => {
-      database.all(
-        'SELECT * FROM printers ORDER BY created_at DESC',
-        (err, rows) => {
-          if (err) {
-            reject(err)
-          } else {
-            resolve(rows || [])
-          }
-        }
-      )
-    })
+    const printers = database.prepare('SELECT * FROM printers ORDER BY created_at DESC').all()
 
     return NextResponse.json({ printers })
   } catch (error) {
@@ -62,31 +51,14 @@ export async function POST(request: NextRequest) {
       hours_printed || 0
     )
     
-    const printer = await new Promise<any>((resolve, reject) => {
-      database.run(
-        `INSERT INTO printers (printer_name, model, status, power_consumption, hours_printed, last_maintenance_date, job_queue, location, notes, created_at, updated_at) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-        [printer_name, model, status || 'Idle', power_consumption || 0, hours_printed || 0, last_maintenance_date || new Date().toISOString().split('T')[0], job_queue || 0, location || null, notes || null],
-        function(err) {
-          if (err) {
-            reject(err)
-          } else {
-            // Get the created printer
-            database.get(
-              'SELECT * FROM printers WHERE id = ?',
-              [this.lastID],
-              (err, printer) => {
-                if (err) {
-                  reject(err)
-                } else {
-                  resolve(printer)
-                }
-              }
-            )
-          }
-        }
-      )
-    })
+    const stmt = database.prepare(
+      `INSERT INTO printers (printer_name, model, status, power_consumption, hours_printed, last_maintenance_date, job_queue, location, notes, created_at, updated_at) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+    )
+    const result = stmt.run(printer_name, model, status || 'Idle', power_consumption || 0, hours_printed || 0, last_maintenance_date || new Date().toISOString().split('T')[0], job_queue || 0, location || null, notes || null)
+    
+    // Get the created printer
+    const printer = database.prepare('SELECT * FROM printers WHERE id = ?').get(result.lastInsertRowid)
 
     // Create notification if maintenance is needed
     if (maintenanceStatus.needsMaintenance) {
