@@ -413,9 +413,6 @@ export function ProductFormModal({ open, onOpenChange, product, onSuccess }: Pro
         barcode_image_url: formData.barcode_image_url.trim() || null,
       }
       
-      console.log('Sending product data to API:', productData)
-      console.log('Materials array:', materials, 'Type:', typeof materials, 'IsArray:', Array.isArray(materials))
-
       let response
       if (product) {
         // Update existing product

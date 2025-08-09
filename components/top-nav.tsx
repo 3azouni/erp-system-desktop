@@ -52,7 +52,6 @@ export function TopNav() {
     try {
       const token = localStorage.getItem("auth_token")
       if (!token) {
-        console.log("No auth token found")
         return
       }
 
@@ -83,7 +82,6 @@ export function TopNav() {
       // Check if there are new unread notifications
       if (newUnreadCount > unreadCount) {
         // Show a subtle notification that new notifications arrived
-        console.log(`New notifications received: ${newUnreadCount - unreadCount} unread`)
       }
       
       setNotifications(newNotifications)

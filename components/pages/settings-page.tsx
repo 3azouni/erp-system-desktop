@@ -13,15 +13,46 @@ import { Plus, Trash2, Save, Settings, DollarSign, Palette, Printer, Download, D
 import { Badge } from "@/components/ui/badge"
 import { useSettings } from "@/contexts/settings-context"
 import { useToast } from "@/hooks/use-toast"
-import type { PrinterProfile } from "@/lib/local-db"
-import { getAuthToken } from "@/lib/ssr-safe-storage"
-import { createObjectURL, revokeObjectURL } from "@/lib/ssr-safe-window"
-import { createDownloadLink } from "@/lib/ssr-safe-document"
+
+
+
+export interface PrinterProfile {
+  id: string
+  name: string
+  type: string
+  build_volume: {
+    x: number
+    y: number
+    z: number
+  }
+  materials: string[]
+  nozzle_sizes: number[]
+  default_settings: {
+    layer_height: number
+    infill_density: number
+    print_speed: number
+    temperature: number
+  }
+}
 
 export function SettingsPage() {
-  const { settings, updateSettings, loading } = useSettings()
+  const { settings, loading, updateSettings } = useSettings()
   const { toast } = useToast()
-  const [saving, setSaving] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [editingProfile, setEditingProfile] = useState<PrinterProfile | null>(null)
+  const [profileFormData, setProfileFormData] = useState({
+    name: "",
+    type: "FDM",
+    build_volume_x: "200",
+    build_volume_y: "200",
+    build_volume_z: "200",
+    materials: "",
+    nozzle_sizes: "",
+    layer_height: "0.2",
+    infill_density: "20",
+    print_speed: "50",
+    temperature: "200",
+  })
   const [formData, setFormData] = useState({
     electricity_cost_per_kwh: 0.12,
     labor_rate_per_hour: 25.0,
@@ -35,6 +66,7 @@ export function SettingsPage() {
     footer_text: "Powered by 3DP Commander - 3D Printing Business Management",
     printer_profiles: [] as PrinterProfile[],
   })
+  const [saving, setSaving] = useState(false)
   const [actualPrinters, setActualPrinters] = useState<any[]>([])
 
   useEffect(() => {
@@ -90,91 +122,167 @@ export function SettingsPage() {
     }
   }
 
-  const addPrinterProfile = () => {
+  const handleAddProfile = () => {
     const newProfile: PrinterProfile = {
       id: `printer-${Date.now()}`,
       name: "New Printer",
-      power_draw_watts: 200,
-      default_print_speed: 50,
+      type: "FDM", // Default type
+      build_volume: { x: 200, y: 200, z: 200 }, // Default build volume
+      materials: ["PLA"], // Default materials
+      nozzle_sizes: [0.4], // Default nozzle size
+      default_settings: {
+        layer_height: 0.2,
+        infill_density: 20,
+        print_speed: 50,
+        temperature: 200,
+      },
     }
-    setFormData({
-      ...formData,
-      printer_profiles: [...formData.printer_profiles, newProfile],
+    setProfileFormData({
+      name: newProfile.name,
+      type: newProfile.type,
+      build_volume_x: newProfile.build_volume.x.toString(),
+      build_volume_y: newProfile.build_volume.y.toString(),
+      build_volume_z: newProfile.build_volume.z.toString(),
+      materials: newProfile.materials.join(", "),
+      nozzle_sizes: newProfile.nozzle_sizes.join(", "),
+      layer_height: newProfile.default_settings.layer_height.toString(),
+      infill_density: newProfile.default_settings.infill_density.toString(),
+      print_speed: newProfile.default_settings.print_speed.toString(),
+      temperature: newProfile.default_settings.temperature.toString(),
     })
+    setEditingProfile(null)
+    setIsModalOpen(true)
   }
 
-  const removePrinterProfile = (id: string) => {
-    setFormData({
-      ...formData,
-      printer_profiles: formData.printer_profiles.filter((profile) => profile.id !== id),
+  const handleEditProfile = (profile: PrinterProfile) => {
+    setEditingProfile(profile)
+    setProfileFormData({
+      name: profile.name,
+      type: profile.type,
+      build_volume_x: profile.build_volume.x.toString(),
+      build_volume_y: profile.build_volume.y.toString(),
+      build_volume_z: profile.build_volume.z.toString(),
+      materials: profile.materials.join(", "),
+      nozzle_sizes: profile.nozzle_sizes.join(", "),
+      layer_height: profile.default_settings.layer_height.toString(),
+      infill_density: profile.default_settings.infill_density.toString(),
+      print_speed: profile.default_settings.print_speed.toString(),
+      temperature: profile.default_settings.temperature.toString(),
     })
+    setIsModalOpen(true)
   }
 
-  const updatePrinterProfile = (id: string, updates: Partial<PrinterProfile>) => {
-    setFormData({
-      ...formData,
-      printer_profiles: formData.printer_profiles.map((profile) =>
-        profile.id === id ? { ...profile, ...updates } : profile,
-      ),
-    })
-  }
+  const handleSaveProfile = async () => {
+    if (!settings) return
 
-  const handleExportData = async () => {
     try {
-      const token = getAuthToken()
-      if (!token) {
-        toast({
-          title: "Error",
-          description: "Authentication required for data export.",
-          variant: "destructive",
-        })
-        return
-      }
+      const materials = profileFormData.materials.split(",").map((m: string) => m.trim()).filter((m: string) => m)
+      const nozzleSizes = profileFormData.nozzle_sizes.split(",").map((n: string) => parseFloat(n.trim())).filter((n: number) => !isNaN(n))
 
-      const response = await fetch("/api/export", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+      const profile: PrinterProfile = {
+        id: editingProfile?.id || `printer-${Date.now()}`,
+        name: profileFormData.name,
+        type: profileFormData.type,
+        build_volume: {
+          x: parseInt(profileFormData.build_volume_x),
+          y: parseInt(profileFormData.build_volume_y),
+          z: parseInt(profileFormData.build_volume_z),
         },
-        body: JSON.stringify({
-          tables: ["users", "products", "inventory", "printers", "orders", "expenses", "print_jobs", "app_settings"]
-        }),
+        materials,
+        nozzle_sizes: nozzleSizes,
+        default_settings: {
+          layer_height: parseFloat(profileFormData.layer_height),
+          infill_density: parseInt(profileFormData.infill_density),
+          print_speed: parseInt(profileFormData.print_speed),
+          temperature: parseInt(profileFormData.temperature),
+        },
+      }
+
+      const updatedProfiles = editingProfile
+        ? settings.printer_profiles.map(p => p.id === editingProfile.id ? profile : p)
+        : [...settings.printer_profiles, profile]
+
+      await updateSettings({
+        ...settings,
+        printer_profiles: updatedProfiles,
       })
-
-      if (!response.ok) {
-        throw new Error("Export failed")
-      }
-
-      const result = await response.json()
-      
-      // Create and download CSV files
-      for (const [tableName, csvContent] of Object.entries(result.data)) {
-        if (csvContent) {
-          const blob = new Blob([csvContent as string], { type: "text/csv" })
-          const url = createObjectURL(blob)
-          if (url) {
-            createDownloadLink(url, `${tableName}_${new Date().toISOString().split('T')[0]}.csv`)
-            revokeObjectURL(url)
-          }
-        }
-      }
 
       toast({
-        title: "Export successful",
-        description: "Data has been exported to CSV files.",
+        title: "Success",
+        description: `Printer profile ${editingProfile ? 'updated' : 'added'} successfully`,
       })
+
+      setIsModalOpen(false)
+      setEditingProfile(null)
     } catch (error) {
-      console.error("Export error:", error)
       toast({
-        title: "Export failed",
-        description: "Failed to export data. Please try again.",
+        title: "Error",
+        description: "Failed to save printer profile",
         variant: "destructive",
       })
     }
   }
 
+  const handleDeleteProfile = async (profileId: string) => {
+    if (!settings) return
+
+    if (!confirm("Are you sure you want to delete this printer profile?")) return
+
+    try {
+      const updatedProfiles = settings.printer_profiles.filter(p => p.id !== profileId)
+      await updateSettings({
+        ...settings,
+        printer_profiles: updatedProfiles,
+      })
+
+      toast({
+        title: "Success",
+        description: "Printer profile deleted successfully",
+      })
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete printer profile",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleExportSettings = () => {
+    if (!settings) return
+
+    const dataStr = JSON.stringify(settings, null, 2)
+    const dataBlob = new Blob([dataStr], { type: 'application/json' })
+    const url = URL.createObjectURL(dataBlob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = '3dp-commander-settings.json'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+
+    toast({
+      title: "Success",
+      description: "Settings exported successfully",
+    })
+  }
+
   if (loading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
+          <p className="text-muted-foreground">Configure your application preferences</p>
+        </div>
+        <div className="animate-pulse">
+          <div className="h-64 bg-muted rounded-lg" />
+        </div>
+      </div>
+    )
+  }
+
+  if (!settings) {
     return (
       <div className="space-y-6">
         <div>
@@ -543,13 +651,13 @@ export function SettingsPage() {
             <CardContent className="space-y-6">
               <div className="flex justify-between items-center">
                 <h3 className="text-lg font-semibold">Configured Printers</h3>
-                <Button onClick={addPrinterProfile} size="sm">
+                <Button onClick={handleAddProfile} size="sm">
                   <Plus className="mr-2 h-4 w-4" />
                   Add Printer
                 </Button>
               </div>
               <div className="space-y-4">
-                {formData.printer_profiles.map((profile) => (
+                {settings.printer_profiles.map((profile) => (
                   <div key={profile.id} className="border rounded-lg p-4">
                     <div className="grid gap-4 md:grid-cols-3">
                       <div className="space-y-2">
@@ -589,7 +697,7 @@ export function SettingsPage() {
                               })
                             }
                           />
-                          <Button variant="outline" size="icon" onClick={() => removePrinterProfile(profile.id)}>
+                          <Button variant="outline" size="icon" onClick={() => handleDeleteProfile(profile.id)}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
@@ -597,7 +705,7 @@ export function SettingsPage() {
                     </div>
                   </div>
                 ))}
-                {formData.printer_profiles.length === 0 && (
+                {settings.printer_profiles.length === 0 && (
                   <div className="text-center py-8 text-muted-foreground">
                     <Printer className="mx-auto h-8 w-8 mb-2" />
                     <p>No printer profiles configured</p>

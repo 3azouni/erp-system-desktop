@@ -58,7 +58,6 @@ export function ExpensesPage() {
       }
       
       const data = await response.json()
-      console.log('Expenses loaded from API:', data.expenses)
       setExpenses(data.expenses || [])
     } catch (error) {
       console.error("Error fetching expenses:", error)

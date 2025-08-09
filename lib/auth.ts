@@ -149,8 +149,8 @@ export async function authenticateUser(email: string, password: string): Promise
 }
 
 export async function getUserPermissions(userId: string): Promise<UserPermission[]> {
-  // TODO: Implement permissions from local database
   // For now, return empty array - admin users have all permissions
+  // TODO: Implement permissions from Supabase when permissions table is created
   return []
 }
 

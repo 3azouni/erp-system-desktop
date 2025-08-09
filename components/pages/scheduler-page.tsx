@@ -196,7 +196,6 @@ export function SchedulerPage() {
 
   const updateJobStatus = async (jobId: string, newStatus: PrintJob["status"]) => {
     try {
-      console.log(`Updating job ${jobId} to status: ${newStatus}`)
       const token = localStorage.getItem("auth_token")
       if (!token) {
         throw new Error("Authentication required")
@@ -210,8 +209,6 @@ export function SchedulerPage() {
         updateData.completed_at = new Date().toISOString()
       }
 
-      console.log("Update data:", updateData)
-
       // Update job status using local API
       const response = await fetch(`/api/print-jobs/${jobId}`, {
         method: 'PUT',
@@ -222,15 +219,12 @@ export function SchedulerPage() {
         body: JSON.stringify(updateData)
       })
 
-      console.log("Update response status:", response.status)
       if (!response.ok) {
         const errorData = await response.json()
-        console.error("Update error data:", errorData)
         throw new Error(errorData.error || 'Failed to update job status')
       }
 
       const responseData = await response.json()
-      console.log("Update response data:", responseData)
 
       // Refresh jobs list
       loadData()
@@ -240,7 +234,6 @@ export function SchedulerPage() {
         description: `Job status updated to ${newStatus}`,
       })
     } catch (error) {
-      console.error("Error updating job status:", error)
       toast({
         title: "Error",
         description: "Failed to update job status",
@@ -277,7 +270,6 @@ export function SchedulerPage() {
         description: "Job deleted successfully",
       })
     } catch (error) {
-      console.error("Error deleting job:", error)
       toast({
         title: "Error",
         description: "Failed to delete job",

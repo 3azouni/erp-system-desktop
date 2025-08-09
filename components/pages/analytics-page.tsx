@@ -58,144 +58,44 @@ export function AnalyticsPage() {
   }, [timeRange])
 
   const loadAnalytics = async () => {
-    setLoading(true)
     try {
-      // Calculate date range
+      setLoading(true)
+      
+      const startDate = timeRange === '7d' ? subDays(new Date(), 7) : 
+                       timeRange === '30d' ? subDays(new Date(), 30) : 
+                       timeRange === '90d' ? subDays(new Date(), 90) : 
+                       subDays(new Date(), 7)
+      
       const endDate = new Date()
-      const startDate = new Date()
-
-      switch (timeRange) {
-        case "1month":
-          startDate.setMonth(endDate.getMonth() - 1)
-          break
-        case "3months":
-          startDate.setMonth(endDate.getMonth() - 3)
-          break
-        case "6months":
-          startDate.setMonth(endDate.getMonth() - 6)
-          break
-        case "1year":
-          startDate.setFullYear(endDate.getFullYear() - 1)
-          break
-      }
-
-      console.log('Date range:', { startDate, endDate, timeRange })
-
-      // Fetch real data from APIs
-      const [ordersResponse, productsResponse, expensesResponse, printersResponse] = await Promise.all([
-        fetch("/api/orders"),
-        fetch("/api/products"),
-        fetch("/api/expenses"),
-        fetch("/api/printers")
+      
+      const [ordersRes, productsRes, expensesRes, printersRes] = await Promise.all([
+        fetch(`/api/orders?start_date=${startDate.toISOString()}&end_date=${endDate.toISOString()}`, {
+          headers: { 'Authorization': `Bearer ${getAuthToken()}` }
+        }),
+        fetch('/api/products', {
+          headers: { 'Authorization': `Bearer ${getAuthToken()}` }
+        }),
+        fetch(`/api/expenses?start_date=${startDate.toISOString()}&end_date=${endDate.toISOString()}`, {
+          headers: { 'Authorization': `Bearer ${getAuthToken()}` }
+        }),
+        fetch('/api/printers', {
+          headers: { 'Authorization': `Bearer ${getAuthToken()}` }
+        })
       ])
 
-      console.log('API responses:', {
-        orders: ordersResponse.status,
-        products: productsResponse.status,
-        expenses: expensesResponse.status,
-        printers: printersResponse.status
-      })
+      const [ordersData, productsData, expensesData, printersData] = await Promise.all([
+        ordersRes.json(),
+        productsRes.json(),
+        expensesRes.json(),
+        printersRes.json()
+      ])
 
-      const orders = ordersResponse.ok ? (await ordersResponse.json()).orders : []
-      const products = productsResponse.ok ? (await productsResponse.json()).products : []
-      const expenses = expensesResponse.ok ? (await expensesResponse.json()).expenses : []
-      const printers = printersResponse.ok ? (await printersResponse.json()).printers : []
-
-      console.log('Analytics data loaded:', { orders, products, expenses, printers })
-
-      // Calculate growth based on real data
-      const currentPeriodOrders = orders.filter((order: any) => {
-        const orderDate = new Date(order.created_at || order.order_date || new Date())
-        return orderDate >= startDate && orderDate <= endDate
-      })
-      
-      // Calculate metrics
-      const totalRevenue = currentPeriodOrders?.reduce((sum: number, order: any) => sum + (order.total_amount || 0), 0) || 0
-      const totalOrders = currentPeriodOrders?.length || 0
-      const totalProducts = products?.length || 0
-      const uniqueCustomers = new Set(currentPeriodOrders?.map((order: any) => order.customer_name)).size
-      
-      const previousPeriodStart = new Date(startDate)
-      const previousPeriodEnd = new Date(startDate)
-      previousPeriodStart.setMonth(previousPeriodStart.getMonth() - (timeRange === "1month" ? 1 : timeRange === "3months" ? 3 : timeRange === "6months" ? 6 : 12))
-      previousPeriodEnd.setMonth(previousPeriodEnd.getMonth() - (timeRange === "1month" ? 1 : timeRange === "3months" ? 3 : timeRange === "6months" ? 6 : 12))
-      
-      const previousPeriodOrders = orders.filter((order: any) => {
-        const orderDate = new Date(order.created_at || order.order_date || new Date())
-        return orderDate >= previousPeriodStart && orderDate <= previousPeriodEnd
-      })
-      
-      const currentRevenue = currentPeriodOrders.reduce((sum: number, order: any) => sum + (order.total_amount || 0), 0)
-      const previousRevenue = previousPeriodOrders.reduce((sum: number, order: any) => sum + (order.total_amount || 0), 0)
-      const currentOrdersCount = currentPeriodOrders.length
-      const previousOrdersCount = previousPeriodOrders.length
-      
-      const revenueGrowth = previousRevenue > 0 ? ((currentRevenue - previousRevenue) / previousRevenue) * 100 : 0
-      const ordersGrowth = previousOrdersCount > 0 ? ((currentOrdersCount - previousOrdersCount) / previousOrdersCount) * 100 : 0
-
-      // Generate monthly revenue data
-      const monthlyRevenue = generateMonthlyData(currentPeriodOrders || [], timeRange)
-
-      // Generate product sales data
-      const productSales = generateProductSalesData(currentPeriodOrders || [], products || [])
-
-      // Generate cost breakdown from real expense data
-      const currentPeriodExpenses = expenses.filter((expense: any) => {
-        const expenseDate = new Date(expense.date || expense.created_at || new Date())
-        return expenseDate >= startDate && expenseDate <= endDate
-      })
-      
-      const totalExpenses = currentPeriodExpenses.reduce((sum: number, expense: any) => sum + expense.amount, 0)
-      
-      // Group expenses by type
-      const expensesByType = currentPeriodExpenses.reduce((acc: Record<string, number>, expense: any) => {
-        acc[expense.expense_type] = (acc[expense.expense_type] || 0) + expense.amount
-        return acc
-      }, {} as Record<string, number>)
-      
-      const costBreakdown = Object.entries(expensesByType).map(([type, amount], index) => {
-        const colors = ["#8884d8", "#82ca9d", "#ffc658", "#ff7300", "#00ff00", "#ff0000", "#0000ff"]
-        return {
-          name: type,
-          value: amount as number,
-          color: colors[index % colors.length]
-        }
-      })
-
-      // Generate printer utilization data from real printer data
-      const printerUtilization = printers?.map((printer: any) => ({
-        printer: printer.printer_name || 'Unknown Printer',
-        utilization: printer.hours_printed > 0 ? Math.min((printer.hours_printed / 720) * 100, 100) : 0, // Assuming 720 hours per month (30 days * 24 hours)
-        hours: printer.hours_printed || 0,
-      })) || []
-
-      setAnalytics({
-        totalRevenue,
-        totalOrders,
-        totalProducts,
-        totalCustomers: uniqueCustomers,
-        revenueGrowth,
-        ordersGrowth,
-        monthlyRevenue,
-        productSales,
-        costBreakdown,
-        printerUtilization,
-      })
+      setOrders(ordersData.orders || [])
+      setProducts(productsData.products || [])
+      setExpenses(expensesData.expenses || [])
+      setPrinters(printersData.printers || [])
     } catch (error) {
-      console.error("Error loading analytics:", error)
-      // Set default values if there's an error
-      setAnalytics({
-        totalRevenue: 0,
-        totalOrders: 0,
-        totalProducts: 0,
-        totalCustomers: 0,
-        revenueGrowth: 0,
-        ordersGrowth: 0,
-        monthlyRevenue: [],
-        productSales: [],
-        costBreakdown: [],
-        printerUtilization: [],
-      })
+      toast.error('Failed to load analytics data')
     } finally {
       setLoading(false)
     }

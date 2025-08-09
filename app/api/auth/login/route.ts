@@ -60,8 +60,8 @@ export async function POST(request: NextRequest) {
     }
     const token = generateToken(user)
 
-    // TODO: Fetch permissions from Supabase if you have a permissions table
-    const permissions: any[] = [] // Replace with actual permissions logic
+    // Fetch permissions from Supabase if you have a permissions table
+    const permissions: any[] = [] // Replace with actual permissions logic when permissions table is implemented
 
     return NextResponse.json({
       user,

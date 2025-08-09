@@ -18,21 +18,13 @@ export function AuthWrapper({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!loading && !user && pathname !== "/login") {
-      console.log("Redirecting to login - no user found")
       router.push("/login")
     }
   }, [user, loading, pathname, router])
 
   // Show loading spinner while checking authentication
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    )
+    return <div className="flex items-center justify-center min-h-screen">Loading...</div>
   }
 
   // If on login page, show login page regardless of auth state
@@ -42,6 +34,7 @@ export function AuthWrapper({ children }: { children: React.ReactNode }) {
 
   // If user is not authenticated, show nothing (will redirect)
   if (!user) {
+    router.push('/login')
     return null
   }
 

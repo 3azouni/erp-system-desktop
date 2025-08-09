@@ -96,11 +96,11 @@ export function PrintersPage() {
       if (response.ok) {
         const data = await response.json()
         if (data.notifications && data.notifications.length > 0) {
-          console.log(`Created ${data.notifications.length} maintenance notifications`)
+          // Maintenance notifications created
         }
       }
     } catch (error) {
-      console.error('Error checking maintenance notifications:', error)
+      // Handle error silently
     }
   }
 
@@ -179,7 +179,6 @@ export function PrintersPage() {
 
       loadPrinters()
     } catch (error) {
-      console.error("Error deleting printer:", error)
       toast({
         title: "Error",
         description: "Failed to delete printer",

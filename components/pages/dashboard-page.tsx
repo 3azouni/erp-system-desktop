@@ -80,7 +80,7 @@ export function DashboardPage() {
           activeOrders = orders.filter((order: any) => ["New", "In Progress", "Shipped"].includes(order.status)).length
         }
       } catch (error) {
-        console.log("Orders table not available")
+        // Orders table not available
       }
 
       // Fetch printers (handle if table doesn't exist)
@@ -93,7 +93,7 @@ export function DashboardPage() {
           printersOnline = printers.filter((printer: any) => ["Idle", "Printing"].includes(printer.status)).length
         }
       } catch (error) {
-        console.log("Printers table not available")
+        // Printers table not available
       }
 
       // Fetch expenses (handle if table doesn't exist)
@@ -105,7 +105,7 @@ export function DashboardPage() {
           totalExpenses = expenses.reduce((sum: number, expense: any) => sum + expense.amount, 0)
         }
       } catch (error) {
-        console.log("Expenses table not available")
+        // Expenses table not available
       }
 
       // Fetch products (handle if table doesn't exist)
@@ -117,7 +117,7 @@ export function DashboardPage() {
           totalProducts = products.length
         }
       } catch (error) {
-        console.log("Products table not available")
+        // Products table not available
       }
 
       // Fetch inventory (handle if table doesn't exist)
@@ -135,11 +135,11 @@ export function DashboardPage() {
             const inventory = data.inventory || []
             lowStockCount = inventory.filter((item: any) => item.quantity_available <= item.minimum_threshold).length
           } else if (response.status === 401) {
-            console.log("Authentication required for inventory data")
+            // Authentication required for inventory data
           }
         }
       } catch (error) {
-        console.log("Inventory table not available or authentication required")
+        // Inventory table not available or authentication required
       }
 
       // Fetch components (handle if table doesn't exist)
@@ -161,11 +161,11 @@ export function DashboardPage() {
               return availableStock <= component.minimum_stock_level
             }).length
           } else if (response.status === 401) {
-            console.log("Authentication required for components data")
+            // Authentication required for components data
           }
         }
       } catch (error) {
-        console.log("Components table not available or authentication required")
+        // Components table not available or authentication required
       }
 
       const productionRate = totalPrinters > 0 ? (printersOnline / totalPrinters) * 100 : 0

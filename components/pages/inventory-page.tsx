@@ -9,7 +9,21 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Plus, Search, Edit, Trash2, Package, AlertTriangle, CheckCircle } from "lucide-react"
 import { InventoryFormModal } from "@/components/inventory-form-modal"
-import { type InventoryItem } from "@/lib/local-db"
+
+export interface InventoryItem {
+  id: number
+  product_id: number
+  quantity: number
+  location: string
+  minimum_threshold: number
+  maximum_threshold: number
+  unit_cost: number
+  supplier: string
+  last_updated: string
+  created_at: string
+  updated_at: string
+  product_name?: string
+}
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/contexts/auth-context"
 
@@ -74,7 +88,7 @@ export function InventoryPage() {
   }
 
   const handleDelete = async (item: InventoryItem) => {
-    if (!confirm(`Are you sure you want to delete "${item.material_name}"?`)) return
+    if (!confirm(`Are you sure you want to delete "${item.product_name}"?`)) return
 
     try {
       const token = localStorage.getItem('auth_token')
@@ -117,8 +131,7 @@ export function InventoryPage() {
 
   const filteredInventory = inventory.filter((item) => {
     const matchesSearch =
-      (item.material_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item.material_type || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (item.product_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       (item.supplier || "").toLowerCase().includes(searchTerm.toLowerCase())
     const matchesStatus = statusFilter === "all" || item.status === statusFilter
     const matchesType = typeFilter === "all" || item.material_type === typeFilter

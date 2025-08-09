@@ -1,146 +1,97 @@
 "use client"
 
-import type React from "react"
-import { createContext, useContext, useState, useEffect } from "react"
-import { useToast } from "@/hooks/use-toast"
-import { getAuthToken } from "@/lib/ssr-safe-storage"
-import type { AppSettings, PrinterProfile } from "@/lib/local-db"
+import React, { createContext, useContext, useState, useEffect } from 'react'
 
-interface SettingsContextType {
-  settings: AppSettings
-  updateSettings: (newSettings: Partial<AppSettings>) => Promise<void>
-  loading: boolean
-  formatCurrency: (amount: number) => string
+export interface AppSettings {
+  id: number
+  company_name: string
+  timezone: string
+  currency: string
+  date_format: string
+  electricity_cost_per_kwh: number
+  labor_rate_per_hour: number
+  default_marketing_percentage: number
+  platform_fee_percentage: number
+  misc_buffer_percentage: number
+  usd_to_lbp_rate: number
+  app_name: string
+  app_logo_url: string | null
+  footer_text: string
+  printer_profiles: PrinterProfile[]
+  created_at: string
+  updated_at: string
 }
 
-const defaultSettings: AppSettings = {
-  electricity_cost_per_kwh: 0.12,
-  labor_rate_per_hour: 25.0,
-  default_marketing_percentage: 10.0,
-  platform_fee_percentage: 3.0,
-  misc_buffer_percentage: 5.0,
-  currency: "USD",
-  usd_to_lbp_rate: 89.5,
-  app_name: "3DP Commander",
-  app_logo_url: null,
-  footer_text: "© 2024 3DP Commander. All rights reserved.",
-  printer_profiles: [
-    {
-      id: "ender3-pro",
-      name: "Ender 3 Pro",
-      power_draw_watts: 270,
-      default_print_speed: 50,
-    },
-    {
-      id: "prusa-mk3s",
-      name: "Prusa i3 MK3S+",
-      power_draw_watts: 120,
-      default_print_speed: 60,
-    },
-    {
-      id: "bambu-x1",
-      name: "Bambu X1 Carbon",
-      power_draw_watts: 350,
-      default_print_speed: 80,
-    },
-  ],
+export interface PrinterProfile {
+  id: string
+  name: string
+  type: string
+  build_volume: {
+    x: number
+    y: number
+    z: number
+  }
+  materials: string[]
+  nozzle_sizes: number[]
+  default_settings: {
+    layer_height: number
+    infill_density: number
+    print_speed: number
+    temperature: number
+  }
+}
+
+interface SettingsContextType {
+  settings: AppSettings | null
+  loading: boolean
+  updateSettings: (newSettings: Partial<AppSettings>) => Promise<void>
+  refreshSettings: () => Promise<void>
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined)
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
-  const [settings, setSettings] = useState<AppSettings>(defaultSettings)
+  const [settings, setSettings] = useState<AppSettings | null>(null)
   const [loading, setLoading] = useState(true)
-  const { toast } = useToast()
-
-  const formatCurrency = (amount: number): string => {
-    if (settings.currency === "LBP") {
-      // Convert USD to LBP using configurable exchange rate
-      const exchangeRate = settings.usd_to_lbp_rate || 89.5
-      const lbpAmount = amount * exchangeRate
-      return `${lbpAmount.toLocaleString("en-US", {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
-      })} LBP`
-    }
-    // Default to USD
-    return `$${amount.toLocaleString("en-US", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`
-  }
 
   const loadSettings = async () => {
     try {
       setLoading(true)
-      const token = getAuthToken()
-      if (!token) {
-        setSettings(defaultSettings)
-        return
-      }
-
-      const response = await fetch("/api/settings", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      })
-
+      const response = await fetch('/api/settings')
       if (response.ok) {
         const data = await response.json()
         setSettings(data.settings)
-      } else {
-        console.error("Failed to load settings, using defaults")
-        setSettings(defaultSettings)
       }
     } catch (error) {
-      console.error("Error loading settings:", error)
-      toast({
-        title: "Error",
-        description: "Failed to load settings. Using defaults.",
-        variant: "destructive",
-      })
-      setSettings(defaultSettings)
+      console.error('Failed to load settings:', error)
     } finally {
       setLoading(false)
     }
   }
 
-  const updateSettingsHandler = async (newSettings: Partial<AppSettings>) => {
+  const updateSettings = async (newSettings: Partial<AppSettings>) => {
     try {
-      const token = getAuthToken()
-      if (!token) {
-        throw new Error("No authentication token")
-      }
-
-      const response = await fetch("/api/settings", {
-        method: "PUT",
+      const response = await fetch('/api/settings', {
+        method: 'PUT',
         headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
         },
-        body: JSON.stringify(newSettings),
+        body: JSON.stringify(newSettings)
       })
 
       if (response.ok) {
         const data = await response.json()
         setSettings(data.settings)
-        toast({
-          title: "Success",
-          description: "Settings updated successfully",
-        })
-      } else {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to update settings")
       }
     } catch (error) {
-      console.error("Error updating settings:", error)
-      toast({
-        title: "Error",
-        description: "Failed to update settings",
-        variant: "destructive",
-      })
+      console.error('Failed to update settings:', error)
       throw error
     }
+  }
+
+  const refreshSettings = async () => {
+    await loadSettings()
   }
 
   useEffect(() => {
@@ -148,14 +99,12 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   return (
-    <SettingsContext.Provider
-      value={{
-        settings,
-        updateSettings: updateSettingsHandler,
-        loading,
-        formatCurrency,
-      }}
-    >
+    <SettingsContext.Provider value={{
+      settings,
+      loading,
+      updateSettings,
+      refreshSettings
+    }}>
       {children}
     </SettingsContext.Provider>
   )
@@ -164,7 +113,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 export function useSettings() {
   const context = useContext(SettingsContext)
   if (context === undefined) {
-    throw new Error("useSettings must be used within a SettingsProvider")
+    throw new Error('useSettings must be used within a SettingsProvider')
   }
   return context
 }

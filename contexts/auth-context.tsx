@@ -29,61 +29,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const checkAuth = async () => {
     try {
-      console.log("Checking authentication...")
       const token = getAuthToken()
       if (!token) {
-        console.log("No token found")
+        setUser(null)
         setLoading(false)
         return
       }
 
-      console.log("Token found, verifying...")
-      const response = await fetch("/api/auth/verify", {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await fetch('/api/auth/verify', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
       })
 
       if (response.ok) {
         const data = await response.json()
-        console.log("Auth verified:", data.user.email)
         setUser(data.user)
         setPermissions(data.permissions || [])
       } else {
-        console.log("Token verification failed")
         removeAuthToken()
+        setUser(null)
       }
     } catch (error) {
-      console.error("Auth check failed:", error)
       removeAuthToken()
+      setUser(null)
     } finally {
       setLoading(false)
     }
   }
 
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const login = async (email: string, password: string) => {
     try {
-      console.log("Attempting login...")
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+      setLoading(true)
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email, password })
       })
 
       if (response.ok) {
         const data = await response.json()
-        console.log("Login successful:", data.user.email)
         setAuthToken(data.token)
         setUser(data.user)
         setPermissions(data.permissions || [])
-        router.push("/")
-        return true
+        return { success: true }
       } else {
         const errorData = await response.json()
-        console.error("Login failed:", errorData)
-        return false
+        return { success: false, error: errorData.error }
       }
     } catch (error) {
-      console.error("Login failed:", error)
-      return false
+      return { success: false, error: 'Network error' }
+    } finally {
+      setLoading(false)
     }
   }
 

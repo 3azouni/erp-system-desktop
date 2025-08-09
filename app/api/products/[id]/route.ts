@@ -44,70 +44,57 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const authHeader = request.headers.get("authorization")
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "No token provided" }, { status: 401 })
-    }
-
-    const token = authHeader.substring(7)
-    const decoded = verifyToken(token)
-    if (!decoded) {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 })
-    }
-
     const body = await request.json()
-    const { product_name, sku, category, description, image_url, required_materials, print_time, weight, printer_type } = body
+    const { 
+      product_name, 
+      description, 
+      price, 
+      cost, 
+      required_materials, 
+      print_time_hours, 
+      weight_grams,
+      dimensions,
+      category,
+      sku,
+      barcode
+    } = body
 
-    console.log('PUT - Received required_materials:', required_materials, typeof required_materials)
-
-    if (!product_name || !sku || !category || !print_time || !weight || !printer_type) {
-      return NextResponse.json({ error: "Required fields missing" }, { status: 400 })
+    // Parse materials if it's a string
+    let materialsArray = required_materials
+    if (typeof required_materials === 'string') {
+      try {
+        materialsArray = JSON.parse(required_materials)
+      } catch (e) {
+        materialsArray = []
+      }
     }
 
-    // Ensure required_materials is always an array
-    const materialsArray = Array.isArray(required_materials) ? required_materials : []
-    console.log('PUT - Saving materials to DB:', materialsArray, 'Original:', required_materials)
-    
-    const { data: product, error } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from('products')
       .update({
         product_name,
-        sku,
-        category,
-        description: description || null,
-        image_url: image_url || null,
+        description,
+        price,
+        cost,
         required_materials: materialsArray,
-        print_time,
-        weight,
-        printer_type
+        print_time_hours,
+        weight_grams,
+        dimensions,
+        category,
+        sku,
+        barcode
       })
       .eq('id', params.id)
       .select()
       .single()
 
-    if (error || !product) {
-      return NextResponse.json({ error: "Product not found" }, { status: 404 })
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // Parse required_materials JSONB back into array
-    let parsedMaterials = []
-    if (product.required_materials) {
-      if (Array.isArray(product.required_materials)) {
-        parsedMaterials = product.required_materials
-      } else {
-        parsedMaterials = []
-      }
-    }
-    
-    const parsedProduct = {
-      ...product,
-      required_materials: parsedMaterials
-    }
-
-    return NextResponse.json({ product: parsedProduct })
+    return NextResponse.json({ product: data })
   } catch (error) {
-    console.error("Update product API error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 

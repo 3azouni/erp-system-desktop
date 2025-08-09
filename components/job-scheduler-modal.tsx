@@ -155,10 +155,6 @@ export function JobSchedulerModal({ open, onOpenChange, onSuccess, editingJob }:
       const printersData = await printersResponse.json()
       const inventoryData = inventoryResponse.ok ? await inventoryResponse.json() : { inventory: [] }
 
-      console.log('Products loaded:', productsData.products)
-      console.log('Printers loaded:', printersData.printers)
-      console.log('Inventory loaded:', inventoryData.inventory)
-
       setProducts(productsData.products || [])
       setPrinters(printersData.printers || [])
       setInventory(inventoryData.inventory || [])

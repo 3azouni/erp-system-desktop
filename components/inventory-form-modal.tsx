@@ -15,13 +15,20 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
-import { type InventoryItem } from "@/lib/local-db"
 
-interface InventoryFormModalProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  item?: InventoryItem | null
-  onSuccess: () => void
+export interface InventoryItem {
+  id: number
+  product_id: number
+  quantity: number
+  location: string
+  minimum_threshold: number
+  maximum_threshold: number
+  unit_cost: number
+  supplier: string
+  last_updated: string
+  created_at: string
+  updated_at: string
+  product_name?: string
 }
 
 async function createInventoryItem(data: any) {
@@ -111,7 +118,7 @@ const COLORS = [
   "Gold",
 ]
 
-export function InventoryFormModal({ open, onOpenChange, item, onSuccess }: InventoryFormModalProps) {
+export function InventoryFormModal({ open, onOpenChange, item, onSuccess }: { open: boolean; onOpenChange: (open: boolean) => void; item?: InventoryItem | null; onSuccess: () => void }) {
   const { toast } = useToast()
   const [loading, setLoading] = React.useState(false)
 

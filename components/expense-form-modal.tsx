@@ -17,7 +17,20 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
-import { Expense } from "@/lib/local-db"
+export interface Expense {
+  id: number
+  description: string
+  amount: number
+  expense_type: string
+  date: string
+  category: string
+  payment_method: string
+  vendor: string
+  receipt_url: string
+  notes: string
+  created_at: string
+  updated_at: string
+}
 
 interface ExpenseFormModalProps {
   open: boolean

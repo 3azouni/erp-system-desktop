@@ -1,13 +1,12 @@
-import { getDatabase, initializeDatabase } from "./local-db"
+import { supabaseAdmin } from "./supabase-server"
 
 export interface Notification {
   id: number
   user_id: number
   title: string
   message: string
-  type: 'info' | 'success' | 'warning' | 'error'
-  read: boolean
-  data?: any
+  type: string
+  is_read: boolean
   created_at: string
   updated_at: string
 }
@@ -16,93 +15,70 @@ export async function createNotification(
   userId: number,
   title: string,
   message: string,
-  type: 'info' | 'success' | 'warning' | 'error' = 'info',
-  data?: any
+  type: string = 'info'
 ): Promise<Notification | null> {
   try {
-    await initializeDatabase()
-    const database = getDatabase()
-    
-    return new Promise((resolve, reject) => {
-      database.run(
-        `INSERT INTO notifications (user_id, title, message, type, data, created_at, updated_at) 
-         VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-        [userId, title, message, type, data ? JSON.stringify(data) : null],
-        function(err) {
-          if (err) {
-            console.error("Error creating notification:", err)
-            resolve(null)
-          } else {
-            // Get the created notification
-            database.get(
-              'SELECT * FROM notifications WHERE id = ?',
-              [this.lastID],
-              (err, notification) => {
-                if (err) {
-                  console.error("Error fetching created notification:", err)
-                  resolve(null)
-                } else {
-                  resolve(notification as Notification)
-                }
-              }
-            )
-          }
-        }
-      )
-    })
+    const { data, error } = await supabaseAdmin
+      .from('notifications')
+      .insert({
+        user_id: userId,
+        title,
+        message,
+        type,
+        is_read: false
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error('Error creating notification:', error)
+      return null
+    }
+
+    return data
   } catch (error) {
-    console.error("Error creating notification:", error)
+    console.error('Error creating notification:', error)
     return null
   }
 }
 
 export async function getNotifications(userId: number): Promise<Notification[]> {
   try {
-    await initializeDatabase()
-    const database = getDatabase()
-    
-    return new Promise((resolve, reject) => {
-      database.all(
-        'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50',
-        [userId],
-        (err, rows: any[]) => {
-          if (err) {
-            console.error("Error fetching notifications:", err)
-            resolve([])
-          } else {
-            resolve(rows || [])
-          }
-        }
-      )
-    })
+    const { data, error } = await supabaseAdmin
+      .from('notifications')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(50)
+
+    if (error) {
+      console.error('Error fetching notifications:', error)
+      return []
+    }
+
+    return data || []
   } catch (error) {
-    console.error("Error fetching notifications:", error)
+    console.error('Error fetching notifications:', error)
     return []
   }
 }
 
 export async function markNotificationAsRead(notificationId: number, userId: number): Promise<boolean> {
   try {
-    await initializeDatabase()
-    const database = getDatabase()
-    
-    return new Promise((resolve, reject) => {
-      database.run(
-        `UPDATE notifications SET read = 1, updated_at = datetime('now') 
-         WHERE id = ? AND user_id = ?`,
-        [notificationId, userId],
-        function(err) {
-          if (err) {
-            console.error("Error marking notification as read:", err)
-            resolve(false)
-          } else {
-            resolve(this.changes > 0)
-          }
-        }
-      )
-    })
+    const { error } = await supabaseAdmin
+      .from('notifications')
+      .update({ is_read: true, updated_at: supabaseAdmin.rpc('update_timestamp') })
+      .eq('id', notificationId)
+      .eq('user_id', userId)
+
+    if (error) {
+      console.error('Error marking notification as read:', error)
+      return false
+    }
+
+    return true
   } catch (error) {
-    console.error("Error marking notification as read:", error)
+    console.error('Error marking notification as read:', error)
     return false
   }
 }
@@ -113,93 +89,98 @@ export async function createOrderNotification(userId: number, orderId: string, c
     userId,
     "New Order Received",
     `Order ${orderId} from ${customerName} has been created.`,
-    'success',
-    { orderId, customerName }
+    'success'
   )
 }
 
 export async function createProductNotification(userId: number, productName: string, action: 'created' | 'updated' | 'deleted'): Promise<void> {
+  const type = action === 'deleted' ? 'warning' : 'success'
   await createNotification(
     userId,
     `Product ${action.charAt(0).toUpperCase() + action.slice(1)}`,
     `Product "${productName}" has been ${action}.`,
-    action === 'deleted' ? 'warning' : 'success',
-    { productName, action }
+    type
   )
 }
 
 export async function createInventoryNotification(userId: number, materialName: string, status: 'low' | 'out'): Promise<void> {
+  const type = status === 'low' ? 'warning' : 'error'
   await createNotification(
     userId,
     `Inventory Alert`,
     `Material "${materialName}" is ${status === 'low' ? 'running low' : 'out of stock'}.`,
-    'warning',
-    { materialName, status }
+    type
   )
 }
 
 export async function createPrinterNotification(userId: number, printerName: string, action: 'maintenance_due' | 'maintenance_overdue' | 'status_changed'): Promise<void> {
-  const messages = {
-    maintenance_due: `Printer "${printerName}" is due for maintenance.`,
-    maintenance_overdue: `Printer "${printerName}" is overdue for maintenance!`,
-    status_changed: `Printer "${printerName}" status has been updated.`
-  }
-  
+  const type = action === 'maintenance_overdue' ? 'error' : 'warning'
   await createNotification(
     userId,
     `Printer ${action.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}`,
-    messages[action],
-    action === 'maintenance_overdue' ? 'error' : 'warning',
-    { printerName, action }
+    `Printer "${printerName}" ${action.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}`,
+    type
   )
 }
 
 export async function createComponentNotification(userId: number, componentName: string, action: 'created' | 'updated' | 'deleted' | 'low_stock' | 'out_of_stock'): Promise<void> {
-  const messages = {
-    created: `Component "${componentName}" has been added to inventory.`,
-    updated: `Component "${componentName}" has been updated.`,
-    deleted: `Component "${componentName}" has been removed from inventory.`,
-    low_stock: `Component "${componentName}" is running low on stock.`,
-    out_of_stock: `Component "${componentName}" is out of stock!`
-  }
-  
-  const types = {
-    created: 'success',
-    updated: 'info',
-    deleted: 'warning',
-    low_stock: 'warning',
-    out_of_stock: 'error'
-  }
-  
+  const type = action === 'deleted' ? 'warning' : action === 'low_stock' ? 'warning' : action === 'out_of_stock' ? 'error' : 'info'
   await createNotification(
     userId,
     `Component ${action.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}`,
-    messages[action],
-    types[action] as 'info' | 'success' | 'warning' | 'error',
-    { componentName, action }
+    `Component "${componentName}" has been ${action}.`,
+    type
   )
 }
 
-export async function createPrintJobNotification(userId: number, jobId: string, productName: string, action: 'started' | 'completed' | 'overdue' | 'failed'): Promise<void> {
-  const messages = {
-    started: `Print job for "${productName}" has started printing.`,
-    completed: `Print job for "${productName}" has completed successfully!`,
-    overdue: `Print job for "${productName}" should have finished by now. Please check the printer.`,
-    failed: `Print job for "${productName}" has failed. Please check the printer.`
+export async function createPrintJobNotification(
+  userId: number,
+  jobId: string,
+  productName: string,
+  type: 'started' | 'completed' | 'failed' | 'overdue'
+): Promise<Notification | null> {
+  const notifications = {
+    started: {
+      title: 'Print Job Started',
+      message: `Print job for ${productName} has started`
+    },
+    completed: {
+      title: 'Print Job Completed',
+      message: `Print job for ${productName} has been completed successfully`
+    },
+    failed: {
+      title: 'Print Job Failed',
+      message: `Print job for ${productName} has failed`
+    },
+    overdue: {
+      title: 'Print Job Overdue',
+      message: `Print job for ${productName} is overdue and may need attention`
+    }
   }
+
+  const notification = notifications[type]
+  return createNotification(userId, notification.title, notification.message, type)
+}
+
+export async function createMaintenanceNotification(
+  userId: number,
+  printerName: string,
+  maintenanceType: string
+): Promise<Notification | null> {
+  const title = 'Printer Maintenance Required'
+  const message = `${printerName} requires ${maintenanceType} maintenance`
   
-  const types = {
-    started: 'info',
-    completed: 'success',
-    overdue: 'warning',
-    failed: 'error'
-  }
+  return createNotification(userId, title, message, 'maintenance')
+}
+
+export async function createLowStockNotification(
+  userId: number,
+  productName: string,
+  currentStock: number,
+  minimumThreshold: number
+): Promise<Notification | null> {
+  const title = 'Low Stock Alert'
+  const message = `${productName} is running low on stock (${currentStock}/${minimumThreshold})`
   
-  await createNotification(
-    userId,
-    `Print Job ${action.charAt(0).toUpperCase() + action.slice(1)}`,
-    messages[action],
-    types[action] as 'info' | 'success' | 'warning' | 'error',
-    { jobId, productName, action }
-  )
+  return createNotification(userId, title, message, 'low_stock')
 } 

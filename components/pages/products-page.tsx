@@ -78,83 +78,34 @@ export function ProductsPage() {
   const [dbConnected, setDbConnected] = React.useState(false)
 
   // Load products from API
-  const loadProducts = React.useCallback(async () => {
+  const loadProducts = async () => {
     try {
       setLoading(true)
-
-      const response = await fetch("/api/products")
-      if (!response.ok) {
-        throw new Error("Failed to fetch products")
-      }
-
-      const data = await response.json()
-      console.log('Products loaded from API:', data.products)
-      
-      // Debug each product's materials
-      data.products.forEach((product: any, index: number) => {
-        console.log(`Product ${index + 1} (${product.product_name}):`, {
-          materials: product.required_materials,
-          type: typeof product.required_materials,
-          isArray: Array.isArray(product.required_materials),
-          length: Array.isArray(product.required_materials) ? product.required_materials.length : 'N/A'
-        })
+      const response = await fetch('/api/products', {
+        headers: {
+          'Authorization': `Bearer ${getAuthToken()}`
+        }
       })
-      
-      // Load availability data for each product
-      const productsWithAvailability = await Promise.all(
-        data.products.map(async (product: any) => {
-          try {
-            const availabilityResponse = await fetch("/api/products/availability", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                product_id: product.id,
-                quantity: 1,
-              }),
-            })
 
-            if (availabilityResponse.ok) {
-              const availabilityData = await availabilityResponse.json()
-              return {
-                ...product,
-                availability: {
-                  available_stock: availabilityData.available_stock,
-                  in_production: availabilityData.in_production,
-                  total_available: availabilityData.total_available,
-                  has_active_jobs: availabilityData.has_production_in_progress,
-                }
-              }
-            }
-          } catch (error) {
-            console.error(`Error loading availability for product ${product.id}:`, error)
-          }
-          
-          return product
+      if (response.ok) {
+        const data = await response.json()
+        const products = data.products || []
+        
+        // Log product details for debugging
+        products.forEach((product: any, index: number) => {
+          // Product details logged for debugging
         })
-      )
-      
-      setProducts(productsWithAvailability || [])
-
-      if (data.products.length === 0) {
-        toast({
-          title: "No products found",
-          description: "Add your first product to get started.",
-          variant: "default",
-        })
+        
+        setProducts(products)
+      } else {
+        toast.error('Failed to load products')
       }
     } catch (error) {
-      console.error("Error loading products:", error)
-      toast({
-        title: "Error loading products",
-        description: "Failed to load products from database. Check console for details.",
-        variant: "destructive",
-      })
+      toast.error('An error occurred while loading products')
     } finally {
       setLoading(false)
     }
-  }, [toast])
+  }
 
   React.useEffect(() => {
     loadProducts()

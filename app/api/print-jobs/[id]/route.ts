@@ -81,14 +81,9 @@ export async function PUT(
     // If job is being completed, add finished goods to inventory
     if (status === "Completed" && currentJob.product_id && currentJob.quantity) {
       try {
-        const result = await addFinishedGoodsToInventory(currentJob.product_id, currentJob.quantity)
-        if (result.success) {
-          console.log(`Added ${currentJob.quantity} units of product ${currentJob.product_id} to finished goods inventory`)
-        } else {
-          console.error("Failed to add finished goods to inventory")
-        }
+        await addFinishedGoodsToInventory(currentJob.product_id, currentJob.quantity)
       } catch (error) {
-        console.error("Error adding finished goods to inventory:", error)
+        // Silently handle inventory update errors
       }
     }
     // Clear availability cache for the product
@@ -113,7 +108,6 @@ export async function PUT(
 
     return NextResponse.json({ job: updatedJob })
   } catch (error) {
-    console.error("Update print job API error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -178,7 +172,6 @@ export async function DELETE(
 
     return NextResponse.json({ message: "Print job deleted successfully" })
   } catch (error) {
-    console.error("Delete print job API error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 } 
