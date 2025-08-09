@@ -26,7 +26,12 @@ export async function PUT(
       return NextResponse.json({ error: "Required fields missing" }, { status: 400 })
     }
 
-    
+    // Initialize database if needed
+    try {
+      await initializeDatabase()
+    } catch (error) {
+      console.error("Database initialization error:", error)
+    }
 
     const database = getDatabase()
     

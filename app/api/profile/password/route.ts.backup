@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { supabaseAdmin } from "@/lib/supabase-server"
+import { getDatabase } from "@/lib/local-db"
 
 export async function PUT(request: NextRequest) {
   try {

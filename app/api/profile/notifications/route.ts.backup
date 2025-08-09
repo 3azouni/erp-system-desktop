@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { verifyToken } from "@/lib/auth"
-import { supabaseAdmin } from "@/lib/supabase-server"
+import { getDatabase, initializeDatabase } from "@/lib/local-db"
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,7 +17,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
-    
+    // Initialize database if needed
+    try {
+      await initializeDatabase()
+    } catch (error) {
+      console.error("Database initialization error:", error)
+    }
 
     const database = getDatabase()
     
@@ -93,7 +98,12 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
-    
+    // Initialize database if needed
+    try {
+      await initializeDatabase()
+    } catch (error) {
+      console.error("Database initialization error:", error)
+    }
 
     const database = getDatabase()
     

@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { verifyToken } from "@/lib/auth"
-import { supabaseAdmin } from "@/lib/supabase-server"
+import { getDatabase, initializeDatabase } from "@/lib/local-db"
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,7 +15,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
-    
+    // Initialize database if needed
+    try {
+      await initializeDatabase()
+    } catch (error) {
+      console.error("Database initialization error:", error)
+    }
 
     const database = getDatabase()
     
@@ -51,23 +56,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Title and message are required" }, { status: 400 })
     }
 
-    
+    // Initialize database if needed
+    try {
+      await initializeDatabase()
+    } catch (error) {
+      console.error("Database initialization error:", error)
+    }
 
     const database = getDatabase()
     
     // Create new notification
-    const { data: undefined, error } = await supabaseAdmin
-      .from('undefined')
-      .insert({
-        // Add your fields here
-      })
-      .select()
-      .single()
-
-    if (error) {
-      console.error("Supabase error:", error)
-      return NextResponse.json({ error: "Database error" }, { status: 500 })
-    }
+    const stmt = database.prepare(
+      `INSERT INTO notifications (user_id, title, message, type, data, created_at, updated_at) 
+       VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+    )
+    const result = stmt.run(decoded.userId || 1, title, message, type, data ? JSON.stringify(data) : null)
+    
+    // Get the created notification
+    const notification = database.prepare('SELECT * FROM notifications WHERE id = ?').get(result.lastInsertRowid)
 
     return NextResponse.json({ notification }, { status: 201 })
   } catch (error) {

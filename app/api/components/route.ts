@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getDatabase } from "@/lib/local-db"
+import { supabaseAdmin } from "@/lib/supabase-server"
 import { verifyToken } from "@/lib/auth"
 import { createComponentNotification } from "@/lib/notifications"
 
@@ -15,19 +15,31 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
-    const db = getDatabase()
-    
-    const components = db.prepare(`
-      SELECT 
-        c.*,
-        COALESCE(ci.current_stock, 0) as current_stock,
-        COALESCE(ci.reserved_stock, 0) as reserved_stock
-      FROM components c
-      LEFT JOIN component_inventory ci ON c.id = ci.component_id
-      ORDER BY c.component_name
-    `).all()
+    // Query components with inventory from Supabase
+    const { data: components, error } = await supabaseAdmin
+      .from('components')
+      .select(`
+        *,
+        component_inventory!left(
+          current_stock,
+          reserved_stock
+        )
+      `)
+      .order('component_name')
 
-    return NextResponse.json({ components })
+    if (error) {
+      console.error("Supabase error:", error)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
+
+    // Transform data to match expected format
+    const transformedComponents = components?.map(component => ({
+      ...component,
+      current_stock: component.component_inventory?.current_stock || 0,
+      reserved_stock: component.component_inventory?.reserved_stock || 0
+    })) || []
+
+    return NextResponse.json({ components: transformedComponents })
   } catch (error) {
     console.error("Error fetching components:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
@@ -63,40 +75,40 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
-    const db = getDatabase()
-    
-    const stmt = db.prepare(`
-      INSERT INTO components (
-        component_name, description, part_number, category, 
-        cost, supplier, minimum_stock_level, serial_number_tracking,
-        created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `)
-    const result = stmt.run(
-      component_name,
-      description || null,
-      part_number || null,
-      category,
-      cost,
-      supplier || null,
-      minimum_stock_level || 0,
-      serial_number_tracking ? 1 : 0,
-      new Date().toISOString(),
-      new Date().toISOString()
-    )
+    // Insert component into Supabase
+    const { data: component, error: componentError } = await supabaseAdmin
+      .from('components')
+      .insert({
+        component_name,
+        description: description || null,
+        part_number: part_number || null,
+        category,
+        cost,
+        supplier: supplier || null,
+        minimum_stock_level: minimum_stock_level || 0,
+        serial_number_tracking: serial_number_tracking || false
+      })
+      .select()
+      .single()
+
+    if (componentError) {
+      console.error("Supabase error:", componentError)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
     // Initialize inventory record with initial stock
-    const inventoryStmt = db.prepare(`
-      INSERT INTO component_inventory (
-        component_id, current_stock, reserved_stock, created_at, updated_at
-      ) VALUES (?, ?, 0, ?, ?)
-    `)
-    inventoryStmt.run(
-      result.lastInsertRowid,
-      initial_stock || 0,
-      new Date().toISOString(),
-      new Date().toISOString()
-    )
+    const { error: inventoryError } = await supabaseAdmin
+      .from('component_inventory')
+      .insert({
+        component_id: component.id,
+        current_stock: initial_stock || 0,
+        reserved_stock: 0
+      })
+
+    if (inventoryError) {
+      console.error("Supabase inventory error:", inventoryError)
+      // Continue anyway as the component was created
+    }
 
     // Create notification for new component
     try {
@@ -107,7 +119,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ 
       message: "Component created successfully",
-      component_id: result.lastInsertRowid 
+      component_id: component.id 
     })
   } catch (error) {
     console.error("Error creating component:", error)

@@ -6,7 +6,12 @@ import { availabilityService } from "@/lib/availability-service"
 export async function GET(request: NextRequest) {
   try {
 
-    
+    // Initialize database if needed
+    try {
+      await initializeDatabase()
+    } catch (error) {
+      console.error("Database initialization error:", error)
+    }
 
     const database = getDatabase()
 
@@ -97,7 +102,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Product ID, printer ID, quantity, and estimated print time are required" }, { status: 400 })
     }
 
-    
+    // Initialize database if needed
+    try {
+      await initializeDatabase()
+    } catch (error) {
+      console.error("Database initialization error:", error)
+    }
 
     const database = getDatabase()
 

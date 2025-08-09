@@ -1,7 +1,14 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getDatabase, initializeDatabase, calculateInventoryStatus } from "@/lib/local-db"
+import { supabaseAdmin } from "@/lib/supabase-server"
 import { verifyToken } from "@/lib/auth"
 import { createInventoryNotification } from "@/lib/notifications"
+
+// Helper function to calculate inventory status
+function calculateInventoryStatus(quantity: number, threshold: number): "Normal" | "Low" | "Out" {
+  if (quantity <= 0) return "Out"
+  if (quantity <= threshold) return "Low"
+  return "Normal"
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,16 +23,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
-    // Initialize database if needed
-    try {
-      await initializeDatabase()
-    } catch (error) {
-      console.error("Database initialization error:", error)
-    }
+    // Query inventory from Supabase
+    const { data: inventory, error } = await supabaseAdmin
+      .from('inventory')
+      .select('*')
+      .order('created_at', { ascending: false })
 
-    const database = getDatabase()
-    
-    const inventory = database.prepare('SELECT * FROM inventory ORDER BY created_at DESC').all()
+    if (error) {
+      console.error("Supabase error:", error)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
     return NextResponse.json({ inventory })
   } catch (error) {
@@ -54,19 +61,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Required fields missing" }, { status: 400 })
     }
 
-    const database = getDatabase()
-    
     // Calculate status based on quantity and threshold
     const calculatedStatus = calculateInventoryStatus(quantity_available || 0, minimum_threshold || 0)
     
-    const stmt = database.prepare(
-      `INSERT INTO inventory (material_name, material_type, color, price_per_kg, quantity_available, supplier, minimum_threshold, status, notes, created_at, updated_at) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
-    )
-    const result = stmt.run(material_name, material_type, color, price_per_kg || 0, quantity_available || 0, supplier, minimum_threshold || 0, calculatedStatus, notes || null)
-    
-    // Get the created item
-    const item = database.prepare('SELECT * FROM inventory WHERE id = ?').get(result.lastInsertRowid)
+    // Insert new inventory item into Supabase
+    const { data: item, error } = await supabaseAdmin
+      .from('inventory')
+      .insert({
+        material_name,
+        material_type,
+        color,
+        price_per_kg: price_per_kg || 0,
+        quantity_available: quantity_available || 0,
+        supplier,
+        minimum_threshold: minimum_threshold || 0,
+        status: calculatedStatus,
+        notes: notes || null
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error("Supabase error:", error)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
     // Create notification if status is low or out
     if (calculatedStatus === "Low" || calculatedStatus === "Out") {

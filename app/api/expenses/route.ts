@@ -1,12 +1,19 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getDatabase } from "@/lib/local-db"
+import { supabaseAdmin } from "@/lib/supabase-server"
 import { verifyToken } from "@/lib/auth"
 
 export async function GET(request: NextRequest) {
   try {
-    const database = getDatabase()
-    
-    const expenses = database.prepare('SELECT * FROM expenses ORDER BY created_at DESC').all()
+    // Query expenses from Supabase
+    const { data: expenses, error } = await supabaseAdmin
+      .from('expenses')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error("Supabase error:", error)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
     return NextResponse.json({ expenses })
   } catch (error) {
@@ -35,16 +42,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Required fields missing" }, { status: 400 })
     }
 
-    const database = getDatabase()
-    
-    const stmt = database.prepare(
-      `INSERT INTO expenses (expense_type, amount, date, description, vendor, receipt_url, notes, created_at, updated_at) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
-    )
-    const result = stmt.run(expense_type, amount, date || new Date().toISOString().split('T')[0], description, vendor || null, receipt_url || null, notes || null)
-    
-    // Get the created expense
-    const expense = database.prepare('SELECT * FROM expenses WHERE id = ?').get(result.lastInsertRowid)
+    // Insert expense into Supabase
+    const { data: expense, error } = await supabaseAdmin
+      .from('expenses')
+      .insert({
+        expense_type,
+        amount,
+        date: date || new Date().toISOString().split('T')[0],
+        description,
+        vendor: vendor || null,
+        receipt_url: receipt_url || null,
+        notes: notes || null
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error("Supabase error:", error)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
     return NextResponse.json({ expense }, { status: 201 })
   } catch (error) {

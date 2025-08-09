@@ -1,23 +1,97 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getDatabase, initializeDatabase, reserveFinishedGoods, deductFinishedGoodsFromInventory } from "@/lib/local-db"
+import { supabaseAdmin } from "@/lib/supabase-server"
 import { verifyToken } from "@/lib/auth"
 import { createOrderNotification } from "@/lib/notifications"
 
-export async function GET(request: NextRequest) {
+// Helper function to reserve finished goods in Supabase
+async function reserveFinishedGoods(productId: number, quantity: number) {
   try {
-    // Initialize database if needed
-    try {
-      await initializeDatabase()
-    } catch (error) {
-      console.error("Database initialization error:", error)
+    // Get current inventory
+    const { data: inventoryRecord, error } = await supabaseAdmin
+      .from('finished_goods_inventory')
+      .select('quantity_available, reserved_quantity')
+      .eq('product_id', productId)
+      .single()
+
+    if (error || !inventoryRecord) {
+      return { success: false, availableQuantity: 0 }
     }
 
-    const database = getDatabase()
+    const availableQuantity = inventoryRecord.quantity_available - inventoryRecord.reserved_quantity
     
-    const orders = database.prepare('SELECT * FROM orders ORDER BY created_at DESC').all()
+    if (availableQuantity < quantity) {
+      return { success: false, availableQuantity }
+    }
+
+    // Reserve the quantity
+    const newReservedQuantity = inventoryRecord.reserved_quantity + quantity
+    const { error: updateError } = await supabaseAdmin
+      .from('finished_goods_inventory')
+      .update({ reserved_quantity: newReservedQuantity })
+      .eq('product_id', productId)
+    
+    if (updateError) {
+      return { success: false }
+    }
+    
+    return { success: true, availableQuantity }
+  } catch (error) {
+    console.error("Error reserving finished goods:", error)
+    return { success: false }
+  }
+}
+
+// Helper function to deduct finished goods from inventory
+async function deductFinishedGoodsFromInventory(productId: number, quantity: number) {
+  try {
+    // Get current inventory
+    const { data: inventoryRecord, error } = await supabaseAdmin
+      .from('finished_goods_inventory')
+      .select('quantity_available, reserved_quantity')
+      .eq('product_id', productId)
+      .single()
+
+    if (error || !inventoryRecord) {
+      return { success: false }
+    }
+
+    const newQuantity = Math.max(0, inventoryRecord.quantity_available - quantity)
+    const newReservedQuantity = Math.max(0, inventoryRecord.reserved_quantity - quantity)
+    
+    const { error: updateError } = await supabaseAdmin
+      .from('finished_goods_inventory')
+      .update({ 
+        quantity_available: newQuantity, 
+        reserved_quantity: newReservedQuantity 
+      })
+      .eq('product_id', productId)
+    
+    if (updateError) {
+      return { success: false }
+    }
+    
+    return { success: true, newQuantity }
+  } catch (error) {
+    console.error("Error deducting finished goods from inventory:", error)
+    return { success: false }
+  }
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    // Query orders from Supabase
+    const { data: orders, error } = await supabaseAdmin
+      .from('orders')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error("Supabase error:", error)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
     // Parse ordered_products JSON strings back into arrays
-    const parsedOrders = orders.map(order => {
+    const parsedOrders = orders?.map(order => {
       let parsedProducts = []
       if (order.ordered_products) {
         if (typeof order.ordered_products === 'string') {
@@ -42,7 +116,7 @@ export async function GET(request: NextRequest) {
         ...order,
         ordered_products: parsedProducts
       }
-    })
+    }) || []
 
     return NextResponse.json({ orders: parsedOrders })
   } catch (error) {
@@ -84,16 +158,32 @@ export async function POST(request: NextRequest) {
         }
       }
     }
-    const database = getDatabase()
-    
-    const stmt = database.prepare(
-      `INSERT INTO orders (order_id, customer_name, customer_email, customer_phone, source, ordered_products, total_quantity, total_amount, status, tracking_number, shipping_address, notes, order_date, created_at, updated_at) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, date('now'), datetime('now'), datetime('now'))`
-    )
-    const result = stmt.run(order_id, customer_name, customer_email || null, customer_phone || null, source, JSON.stringify(ordered_products || []), total_quantity || 0, total_amount || 0, status || 'New', tracking_number || null, shipping_address || null, notes || null)
-    
-    // Get the created order
-    const order = database.prepare('SELECT * FROM orders WHERE id = ?').get(result.lastInsertRowid)
+
+    // Insert order into Supabase
+    const { data: order, error } = await supabaseAdmin
+      .from('orders')
+      .insert({
+        order_id,
+        customer_name,
+        customer_email: customer_email || null,
+        customer_phone: customer_phone || null,
+        source,
+        ordered_products: JSON.stringify(ordered_products || []),
+        total_quantity: total_quantity || 0,
+        total_amount: total_amount || 0,
+        status: status || 'New',
+        tracking_number: tracking_number || null,
+        shipping_address: shipping_address || null,
+        notes: notes || null,
+        order_date: new Date().toISOString().split('T')[0]
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error("Supabase error:", error)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
     // Deduct finished goods from inventory for all products in the order
     if (ordered_products && Array.isArray(ordered_products)) {
@@ -107,6 +197,7 @@ export async function POST(request: NextRequest) {
         }
       }
     }
+
     // Parse ordered_products JSON string back into array
     let parsedProducts = []
     if (order.ordered_products) {

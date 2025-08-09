@@ -23,7 +23,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Product ID, quantity, and materials used are required" }, { status: 400 })
     }
 
-    
+    // Initialize database if needed
+    try {
+      await initializeDatabase()
+    } catch (error) {
+      console.error("Database initialization error:", error)
+    }
 
     const database = getDatabase()
     const results = []

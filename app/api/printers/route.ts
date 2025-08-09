@@ -1,20 +1,47 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getDatabase, initializeDatabase, checkPrinterMaintenance } from "@/lib/local-db"
+import { supabaseAdmin } from "@/lib/supabase-server"
 import { verifyToken } from "@/lib/auth"
 import { createPrinterNotification } from "@/lib/notifications"
 
+// Helper function to check printer maintenance status
+function checkPrinterMaintenance(lastMaintenanceDate: string, hoursPrinted: number): {
+  needsMaintenance: boolean
+  isOverdue: boolean
+  daysSinceMaintenance: number
+  recommendedMaintenanceHours: number
+} {
+  const today = new Date()
+  const lastMaintenance = new Date(lastMaintenanceDate)
+  const daysSinceMaintenance = Math.floor((today.getTime() - lastMaintenance.getTime()) / (1000 * 60 * 60 * 24))
+  
+  // Recommended maintenance every 30 days or 500 hours
+  const recommendedMaintenanceDays = 30
+  const recommendedMaintenanceHours = 500
+  
+  // Check if maintenance is needed based on time OR hours since last maintenance
+  const needsMaintenance = daysSinceMaintenance >= recommendedMaintenanceDays || hoursPrinted >= recommendedMaintenanceHours
+  const isOverdue = daysSinceMaintenance >= (recommendedMaintenanceDays * 1.5) || hoursPrinted >= (recommendedMaintenanceHours * 1.2)
+  
+  return {
+    needsMaintenance,
+    isOverdue,
+    daysSinceMaintenance,
+    recommendedMaintenanceHours
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
-    // Initialize database if needed
-    try {
-      await initializeDatabase()
-    } catch (error) {
-      console.error("Database initialization error:", error)
-    }
+    // Query printers from Supabase
+    const { data: printers, error } = await supabaseAdmin
+      .from('printers')
+      .select('*')
+      .order('created_at', { ascending: false })
 
-    const database = getDatabase()
-    
-    const printers = database.prepare('SELECT * FROM printers ORDER BY created_at DESC').all()
+    if (error) {
+      console.error("Supabase error:", error)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
     return NextResponse.json({ printers })
   } catch (error) {
@@ -43,22 +70,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Required fields missing" }, { status: 400 })
     }
 
-    const database = getDatabase()
-    
     // Check maintenance status for new printer
     const maintenanceStatus = checkPrinterMaintenance(
       last_maintenance_date || new Date().toISOString().split('T')[0], 
       hours_printed || 0
     )
-    
-    const stmt = database.prepare(
-      `INSERT INTO printers (printer_name, model, status, power_consumption, hours_printed, last_maintenance_date, job_queue, location, notes, created_at, updated_at) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
-    )
-    const result = stmt.run(printer_name, model, status || 'Idle', power_consumption || 0, hours_printed || 0, last_maintenance_date || new Date().toISOString().split('T')[0], job_queue || 0, location || null, notes || null)
-    
-    // Get the created printer
-    const printer = database.prepare('SELECT * FROM printers WHERE id = ?').get(result.lastInsertRowid)
+
+    // Insert printer into Supabase
+    const { data: printer, error } = await supabaseAdmin
+      .from('printers')
+      .insert({
+        printer_name,
+        model,
+        status: status || 'Idle',
+        power_consumption: power_consumption || 0,
+        hours_printed: hours_printed || 0,
+        last_maintenance_date: last_maintenance_date || new Date().toISOString().split('T')[0],
+        job_queue: job_queue || 0,
+        location: location || null,
+        notes: notes || null
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error("Supabase error:", error)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
     // Create notification if maintenance is needed
     if (maintenanceStatus.needsMaintenance) {

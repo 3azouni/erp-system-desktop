@@ -12,6 +12,10 @@ declare global {
   var migrationLogged: boolean
   var availabilityService: any
 }
+
+// Check if we're in a serverless environment (Vercel)
+const isServerless = process.env.VERCEL === '1' || process.env.NEXT_PUBLIC_APP_ENV === 'production'
+
 // Database file path - use Electron path in desktop app, fallback to Documents folder
 const getDbPath = () => {
   // Check if we're running in Electron
@@ -35,6 +39,11 @@ const getDbPath = () => {
 let db: Database | null = null
 
 export const getDatabase = (): Database => {
+  // Prevent SQLite usage in serverless environments
+  if (isServerless) {
+    throw new Error('SQLite database is not available in serverless environments. Use Supabase instead.')
+  }
+
   if (!db) {
     const dbPath = getDbPath()
     try {
@@ -60,6 +69,12 @@ if (!global.dbInitialized) {
 let initializationPromise: Promise<void> | null = null
 
 export const initializeDatabase = async (): Promise<void> => {
+  // Prevent SQLite initialization in serverless environments
+  if (isServerless) {
+    console.log('Skipping SQLite initialization in serverless environment')
+    return Promise.resolve()
+  }
+
   if (global.dbInitialized) {
     return Promise.resolve()
   }

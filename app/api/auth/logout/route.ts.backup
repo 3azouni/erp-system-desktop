@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { supabaseAdmin } from "@/lib/supabase-server"
+import { getDatabase } from "@/lib/local-db"
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,9 +10,17 @@ export async function POST(request: NextRequest) {
 
     const token = authHeader.substring(7)
 
-    // For Supabase, we don't need to manually delete sessions
-    // Supabase handles session management automatically
-    // Just return success - the client should clear the token
+    // Delete session
+    const db = getDatabase()
+    await new Promise<void>((resolve, reject) => {
+      db.run("DELETE FROM user_sessions WHERE token = ?", [token], function(err) {
+        if (err) {
+          reject(err)
+        } else {
+          resolve()
+        }
+      })
+    })
 
     return NextResponse.json({ message: "Logged out successfully" })
   } catch (error) {
