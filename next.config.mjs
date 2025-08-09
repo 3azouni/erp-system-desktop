@@ -7,10 +7,10 @@ const nextConfig = {
     ignoreBuildErrors: false,
   },
   images: {
-    unoptimized: true,
+    unoptimized: false,
   },
   experimental: {
-    serverComponentsExternalPackages: ['bcryptjs'],
+    serverComponentsExternalPackages: ['bcryptjs', 'canvas'],
   },
   webpack: (config, { isServer }) => {
     // Suppress punycode deprecation warning

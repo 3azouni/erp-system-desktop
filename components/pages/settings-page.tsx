@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Plus, Trash2, Save, Settings, DollarSign, Palette, Printer, Download } from "lucide-react"
+import { Plus, Trash2, Save, Settings, DollarSign, Palette, Printer, Download, Database } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { useSettings } from "@/contexts/settings-context"
 import { useToast } from "@/hooks/use-toast"
@@ -208,10 +208,14 @@ export function SettingsPage() {
       </div>
 
       <Tabs defaultValue="cost-defaults" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="cost-defaults" className="flex items-center gap-2">
             <DollarSign className="h-4 w-4" />
             Cost Defaults
+          </TabsTrigger>
+          <TabsTrigger value="database" className="flex items-center gap-2">
+            <Database className="h-4 w-4" />
+            Database
           </TabsTrigger>
           <TabsTrigger value="branding" className="flex items-center gap-2">
             <Palette className="h-4 w-4" />
@@ -350,6 +354,105 @@ export function SettingsPage() {
                     </p>
                   </div>
                 )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="database" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Database Management</CardTitle>
+              <CardDescription>Manage your application database and import existing data</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-medium">Current Database Location</h4>
+                    <p className="text-sm text-muted-foreground">
+                      {typeof window !== 'undefined' && (window as any).electronAPI 
+                        ? "Using Electron app data directory"
+                        : "Using Documents folder"
+                      }
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={async () => {
+                      if (typeof window !== 'undefined' && (window as any).electronAPI) {
+                        const dbPath = await (window as any).electronAPI.getDatabasePath()
+                        toast({
+                          title: "Database Location",
+                          description: `Current database: ${dbPath}`,
+                        })
+                      }
+                    }}
+                  >
+                    View Path
+                  </Button>
+                </div>
+                
+                <Separator />
+                
+                <div>
+                  <h4 className="font-medium mb-2">Import Existing Database</h4>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Select an existing database file to import. This will replace your current database.
+                  </p>
+                  <Button
+                    variant="outline"
+                    onClick={async () => {
+                      if (typeof window !== 'undefined' && (window as any).electronAPI) {
+                        try {
+                          const selectedPath = await (window as any).electronAPI.selectDatabaseFile()
+                          if (selectedPath) {
+                            const currentDbPath = await (window as any).electronAPI.getDatabasePath()
+                            const result = await (window as any).electronAPI.copyDatabaseFile(selectedPath, currentDbPath)
+                            
+                            if (result.success) {
+                              toast({
+                                title: "Database Imported",
+                                description: "Database has been successfully imported. Please restart the application.",
+                              })
+                            } else {
+                              toast({
+                                title: "Import Failed",
+                                description: `Failed to import database: ${result.error}`,
+                                variant: "destructive",
+                              })
+                            }
+                          }
+                        } catch (error) {
+                          toast({
+                            title: "Error",
+                            description: "Failed to import database",
+                            variant: "destructive",
+                          })
+                        }
+                      } else {
+                        toast({
+                          title: "Not Available",
+                          description: "Database import is only available in the desktop application.",
+                        })
+                      }
+                    }}
+                  >
+                    Select Database File
+                  </Button>
+                </div>
+                
+                <Separator />
+                
+                <div>
+                  <h4 className="font-medium mb-2">Database Information</h4>
+                  <div className="text-sm text-muted-foreground space-y-1">
+                    <p>• Database files are stored in the application's user data directory</p>
+                    <p>• You can import existing databases from other installations</p>
+                    <p>• Database files use SQLite format (.db extension)</p>
+                    <p>• Always backup your database before importing</p>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>

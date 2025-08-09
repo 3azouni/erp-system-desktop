@@ -5,6 +5,11 @@ const { contextBridge, ipcRenderer } = require('electron')
 contextBridge.exposeInMainWorld('electronAPI', {
   // Database operations
   initializeDatabase: () => ipcRenderer.invoke('db:initialize'),
+  getDatabasePath: () => ipcRenderer.invoke('get-database-path'),
+  getDatabaseDirectory: () => ipcRenderer.invoke('get-database-directory'),
+  selectDatabaseFile: () => ipcRenderer.invoke('select-database-file'),
+  copyDatabaseFile: (sourcePath, targetPath) => ipcRenderer.invoke('copy-database-file', sourcePath, targetPath),
+  checkDatabaseExists: (dbPath) => ipcRenderer.invoke('check-database-exists', dbPath),
   
   // Menu actions
   onMenuAction: (callback) => ipcRenderer.on('menu-action', callback),

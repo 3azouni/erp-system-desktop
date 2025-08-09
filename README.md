@@ -104,32 +104,69 @@ erp-system-main/
 
 ### Environment Variables
 
+#### Local Development
 Create a `.env.local` file in the root directory:
 
 ```env
-# Database
-DATABASE_URL=file:./local.db
+# Supabase Configuration
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url_here
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key_here
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key_here
 
-# Authentication
-JWT_SECRET=your_jwt_secret_here
+# Application Environment
+NEXT_PUBLIC_APP_ENV=local
 
-# Application
-NEXT_PUBLIC_APP_NAME=3DP Commander
-NEXT_PUBLIC_APP_VERSION=1.0.0
+# Application Settings
+APP_TIMEZONE=Asia/Beirut
+
+# JWT Secret (for local development)
+JWT_SECRET=your-secret-key-change-in-production
 ```
+
+#### Vercel Deployment
+1. Go to your Vercel project dashboard
+2. Navigate to **Settings** → **Environment Variables**
+3. Add the following variables:
+   - `NEXT_PUBLIC_SUPABASE_URL` = Your Supabase project URL
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` = Your Supabase anon key
+   - `SUPABASE_SERVICE_ROLE_KEY` = Your Supabase service role key
+   - `NEXT_PUBLIC_APP_ENV` = `production`
+   - `APP_TIMEZONE` = `Asia/Beirut`
+   - `JWT_SECRET` = Your secure JWT secret
+
+#### Environment Variable Security
+- **NEXT_PUBLIC_*** variables are exposed to the browser
+- **SUPABASE_SERVICE_ROLE_KEY** is server-only and never exposed to the browser
+- Never commit `.env.local` to version control
 
 ### Database Setup
 
-The application uses SQLite for local data storage. The database is automatically initialized when you run:
+The application uses **Supabase** as the database backend. Follow these steps to set up your database:
 
-```bash
-npm run setup-db
-```
+#### 1. Create Supabase Project
+1. Go to [supabase.com](https://supabase.com) and create a new project
+2. Note your project URL and API keys from the Settings → API section
 
-This will:
-- Create the database file (`local.db`)
-- Initialize all required tables
-- Insert sample data for testing
+#### 2. Database Schema
+The application requires the following tables:
+- `users` - User authentication and profiles
+- `products` - Product catalog
+- `inventory` - Material inventory
+- `orders` - Customer orders
+- `printers` - 3D printer management
+- `expenses` - Business expenses
+- `components` - Component inventory
+- `print_jobs` - Print job scheduling
+- `app_settings` - Application configuration
+
+#### 3. Row Level Security (RLS)
+Enable RLS on all tables and configure policies based on user roles:
+- Admin users have full access
+- Regular users have limited access based on their department
+- Public access is restricted
+
+#### 4. Sample Data
+After setting up the schema, you can populate with sample data for testing.
 
 ## 📊 Features Overview
 

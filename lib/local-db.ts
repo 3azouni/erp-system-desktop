@@ -12,8 +12,15 @@ declare global {
   var migrationLogged: boolean
   var availabilityService: any
 }
-// Database file path in user's documents folder
+// Database file path - use Electron path in desktop app, fallback to Documents folder
 const getDbPath = () => {
+  // Check if we're running in Electron
+  if (typeof window !== 'undefined' && (window as any).electronAPI) {
+    // In Electron, use the app's user data directory
+    return (window as any).electronAPI.getDatabasePath()
+  }
+  
+  // Fallback to Documents folder for development
   const userDocuments = path.join(process.env.USERPROFILE || '', 'Documents')
   const appFolder = path.join(userDocuments, '3DP Commander')
   

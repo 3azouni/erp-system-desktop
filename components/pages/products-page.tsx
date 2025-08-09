@@ -27,6 +27,9 @@ interface Product {
   printer_type: string
   required_materials: string[]
   image_url: string
+  barcode_type?: string
+  barcode_value?: string
+  barcode_image_url?: string
   price: number
   status: string
   created_at: string
@@ -426,6 +429,7 @@ export function ProductsPage() {
                 <TableRow>
                   <TableHead>Product</TableHead>
                   <TableHead>SKU</TableHead>
+                  <TableHead>Barcode</TableHead>
                   <TableHead>Category</TableHead>
                   <TableHead>Materials</TableHead>
                   <TableHead>Print Time</TableHead>
@@ -438,7 +442,7 @@ export function ProductsPage() {
               <TableBody>
                 {filteredProducts.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8">
+                    <TableCell colSpan={10} className="text-center py-8">
                       <div className="text-muted-foreground">
                         {searchTerm || selectedCategory !== "All Categories"
                           ? "No products match your filters"
@@ -474,6 +478,29 @@ export function ProductsPage() {
                         </TableCell>
                         <TableCell>
                           <code className="text-sm bg-muted px-2 py-1 rounded">{product.sku || "No SKU"}</code>
+                        </TableCell>
+                        <TableCell>
+                          {product.barcode_value ? (
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="text-xs">
+                                  {product.barcode_type || "Unknown"}
+                                </Badge>
+                                <code className="text-xs bg-muted px-1 py-0.5 rounded">
+                                  {product.barcode_value}
+                                </code>
+                              </div>
+                              {product.barcode_image_url && (
+                                <img
+                                  src={product.barcode_image_url}
+                                  alt={`Barcode for ${product.product_name}`}
+                                  className="h-6 w-auto object-contain"
+                                />
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">No barcode</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Badge className={getCategoryColor(product.category || "")}>

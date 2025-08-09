@@ -1,5 +1,6 @@
-const { app, BrowserWindow, Menu, dialog } = require('electron')
+const { app, BrowserWindow, Menu, dialog, ipcMain } = require('electron')
 const path = require('path')
+const fs = require('fs')
 const isDev = require('electron-is-dev')
 
 let mainWindow
@@ -27,7 +28,22 @@ function createWindow() {
     mainWindow.loadURL('http://localhost:3000')
     mainWindow.webContents.openDevTools()
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../out/index.html'))
+    // In production, start the Next.js server and load from it
+    const { spawn } = require('child_process')
+    const serverProcess = spawn('npm', ['start'], {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'pipe'
+    })
+    
+    // Wait for server to start
+    setTimeout(() => {
+      mainWindow.loadURL('http://localhost:3000')
+    }, 3000)
+    
+    // Handle server process cleanup
+    app.on('before-quit', () => {
+      serverProcess.kill()
+    })
   }
 
   // Show window when ready
@@ -149,6 +165,60 @@ app.on('window-all-closed', () => {
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow()
+  }
+})
+
+// Database path management
+function getDatabasePath() {
+  const userDataPath = app.getPath('userData')
+  const dbPath = path.join(userDataPath, '3dp-commander.db')
+  return dbPath
+}
+
+function getDatabaseDirectory() {
+  const userDataPath = app.getPath('userData')
+  return path.dirname(path.join(userDataPath, '3dp-commander.db'))
+}
+
+// IPC handlers for database operations
+ipcMain.handle('get-database-path', () => {
+  return getDatabasePath()
+})
+
+ipcMain.handle('get-database-directory', () => {
+  return getDatabaseDirectory()
+})
+
+ipcMain.handle('select-database-file', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Select Database File',
+    filters: [
+      { name: 'SQLite Database', extensions: ['db', 'sqlite', 'sqlite3'] },
+      { name: 'All Files', extensions: ['*'] }
+    ],
+    properties: ['openFile']
+  })
+  
+  if (!result.canceled && result.filePaths.length > 0) {
+    return result.filePaths[0]
+  }
+  return null
+})
+
+ipcMain.handle('copy-database-file', async (event, sourcePath, targetPath) => {
+  try {
+    fs.copyFileSync(sourcePath, targetPath)
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('check-database-exists', async (event, dbPath) => {
+  try {
+    return fs.existsSync(dbPath)
+  } catch (error) {
+    return false
   }
 })
 

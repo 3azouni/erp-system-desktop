@@ -2,6 +2,9 @@
   "name": "3dp-commander-desktop",
   "version": "0.1.0",
   "private": true,
+  "description": "3DP Commander - Comprehensive 3D Printing Business Management System",
+  "author": "3DP Commander Team",
+  "homepage": "https://github.com/3azouni/erp-system-desktop",
   "scripts": {
     "build": "next build",
     "dev": "NODE_OPTIONS='--no-deprecation' next dev",
@@ -11,7 +14,8 @@
     "electron": "electron .",
     "electron-dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
     "build-electron": "npm run build && electron-builder",
-    "package": "npm run build && electron-builder --win"
+    "package": "npm run build && electron-builder --win",
+    "build-exe": "npm run build && electron-builder --win --publish=never"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.3.2",
@@ -41,10 +45,13 @@
     "@radix-ui/react-toggle": "^1.0.3",
     "@radix-ui/react-toggle-group": "^1.0.4",
     "@radix-ui/react-tooltip": "^1.0.7",
+    "@supabase/supabase-js": "^2.54.0",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^12.2.0",
+    "canvas": "^3.1.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^0.2.0",
@@ -56,6 +63,7 @@
     "lucide-react": "^0.454.0",
     "next": "14.2.16",
     "next-themes": "^0.2.1",
+    "qrcode": "^1.5.4",
     "react": "^18",
     "react-day-picker": "^8.10.0",
     "react-dom": "^18",
@@ -63,7 +71,7 @@
     "react-resizable-panels": "^2.0.9",
     "recharts": "^2.8.0",
     "sonner": "^1.2.4",
-    "sqlite3": "^5.1.6",
+    "sqlite3": "^5.1.7",
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^0.8.0",
@@ -71,6 +79,7 @@
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/jsonwebtoken": "^9.0.5",
     "@types/node": "^22",
     "@types/react": "^18",
@@ -97,12 +106,24 @@
     },
     "files": [
       "electron/**/*",
-      "out/**/*",
-      "node_modules/**/*"
+      ".next/**/*",
+      "node_modules/**/*",
+      "package.json"
     ],
     "win": {
       "target": "nsis",
       "icon": "public/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "3DP Commander",
+      "installerIcon": "public/icon.ico",
+      "uninstallerIcon": "public/icon.ico",
+      "installerHeaderIcon": "public/icon.ico",
+      "include": "installer.nsh"
     }
   }
 }
