@@ -3,6 +3,7 @@
 import type React from "react"
 import { createContext, useContext, useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { getAuthToken, setAuthToken, removeAuthToken } from "@/lib/ssr-safe-storage"
 import type { User, UserPermission } from "@/lib/auth"
 
 interface AuthContextType {
@@ -29,7 +30,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const checkAuth = async () => {
     try {
       console.log("Checking authentication...")
-      const token = localStorage.getItem("auth_token")
+      const token = getAuthToken()
       if (!token) {
         console.log("No token found")
         setLoading(false)
@@ -48,11 +49,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setPermissions(data.permissions || [])
       } else {
         console.log("Token verification failed")
-        localStorage.removeItem("auth_token")
+        removeAuthToken()
       }
     } catch (error) {
       console.error("Auth check failed:", error)
-      localStorage.removeItem("auth_token")
+      removeAuthToken()
     } finally {
       setLoading(false)
     }
@@ -70,7 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (response.ok) {
         const data = await response.json()
         console.log("Login successful:", data.user.email)
-        localStorage.setItem("auth_token", data.token)
+        setAuthToken(data.token)
         setUser(data.user)
         setPermissions(data.permissions || [])
         router.push("/")
@@ -88,7 +89,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
-      const token = localStorage.getItem("auth_token")
+      const token = getAuthToken()
       if (token) {
         await fetch("/api/auth/logout", {
           method: "POST",
@@ -98,7 +99,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error("Logout error:", error)
     } finally {
-      localStorage.removeItem("auth_token")
+      removeAuthToken()
       setUser(null)
       setPermissions([])
       router.push("/login")

@@ -23,6 +23,9 @@ import { Plus, Download, Calendar, Receipt, DollarSign, Edit, Trash2 } from "luc
 import { useSettings } from "@/contexts/settings-context"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/contexts/auth-context"
+import { getAuthToken } from "@/lib/ssr-safe-storage"
+import { createObjectURL, revokeObjectURL } from "@/lib/ssr-safe-window"
+import { createDownloadLink } from "@/lib/ssr-safe-document"
 
 export function ExpensesPage() {
   const [expenses, setExpenses] = useState<any[]>([])
@@ -84,7 +87,7 @@ export function ExpensesPage() {
     }
 
     try {
-      const token = localStorage.getItem("auth_token")
+      const token = getAuthToken()
       if (!token) {
         toast({
           title: "Error",
@@ -159,12 +162,11 @@ export function ExpensesPage() {
       .join("\n")
 
     const blob = new Blob([csvContent], { type: "text/csv" })
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `expenses-${new Date().toISOString().split("T")[0]}.csv`
-    a.click()
-    window.URL.revokeObjectURL(url)
+    const url = createObjectURL(blob)
+    if (url) {
+      createDownloadLink(url, `expenses-${new Date().toISOString().split("T")[0]}.csv`)
+      revokeObjectURL(url)
+    }
 
     toast({
       title: "Export Complete",

@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { createObjectURL, revokeObjectURL } from "@/lib/ssr-safe-window"
+import { createDownloadLink } from "@/lib/ssr-safe-document"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -278,12 +280,11 @@ export function AnalyticsPage() {
       .join("\n")
 
     const blob = new Blob([csvContent], { type: "text/csv" })
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `analytics-${timeRange}-${new Date().toISOString().split("T")[0]}.csv`
-    a.click()
-    window.URL.revokeObjectURL(url)
+    const url = createObjectURL(blob)
+    if (url) {
+      createDownloadLink(url, `analytics-${timeRange}-${new Date().toISOString().split("T")[0]}.csv`)
+      revokeObjectURL(url)
+    }
   }
 
   if (loading) {

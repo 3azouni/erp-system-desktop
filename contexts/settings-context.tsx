@@ -3,6 +3,7 @@
 import type React from "react"
 import { createContext, useContext, useState, useEffect } from "react"
 import { useToast } from "@/hooks/use-toast"
+import { getAuthToken } from "@/lib/ssr-safe-storage"
 import type { AppSettings, PrinterProfile } from "@/lib/local-db"
 
 interface SettingsContextType {
@@ -72,7 +73,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const loadSettings = async () => {
     try {
       setLoading(true)
-      const token = localStorage.getItem("auth_token")
+      const token = getAuthToken()
       if (!token) {
         setSettings(defaultSettings)
         return
@@ -106,7 +107,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   const updateSettingsHandler = async (newSettings: Partial<AppSettings>) => {
     try {
-      const token = localStorage.getItem("auth_token")
+      const token = getAuthToken()
       if (!token) {
         throw new Error("No authentication token")
       }

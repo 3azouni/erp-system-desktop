@@ -14,6 +14,9 @@ import { Badge } from "@/components/ui/badge"
 import { useSettings } from "@/contexts/settings-context"
 import { useToast } from "@/hooks/use-toast"
 import type { PrinterProfile } from "@/lib/local-db"
+import { getAuthToken } from "@/lib/ssr-safe-storage"
+import { createObjectURL, revokeObjectURL } from "@/lib/ssr-safe-window"
+import { createDownloadLink } from "@/lib/ssr-safe-document"
 
 export function SettingsPage() {
   const { settings, updateSettings, loading } = useSettings()
@@ -118,7 +121,7 @@ export function SettingsPage() {
 
   const handleExportData = async () => {
     try {
-      const token = localStorage.getItem("auth_token")
+      const token = getAuthToken()
       if (!token) {
         toast({
           title: "Error",
@@ -149,14 +152,11 @@ export function SettingsPage() {
       for (const [tableName, csvContent] of Object.entries(result.data)) {
         if (csvContent) {
           const blob = new Blob([csvContent as string], { type: "text/csv" })
-          const url = URL.createObjectURL(blob)
-          const a = document.createElement("a")
-          a.href = url
-          a.download = `${tableName}_${new Date().toISOString().split('T')[0]}.csv`
-          document.body.appendChild(a)
-          a.click()
-          document.body.removeChild(a)
-          URL.revokeObjectURL(url)
+          const url = createObjectURL(blob)
+          if (url) {
+            createDownloadLink(url, `${tableName}_${new Date().toISOString().split('T')[0]}.csv`)
+            revokeObjectURL(url)
+          }
         }
       }
 

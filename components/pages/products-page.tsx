@@ -13,6 +13,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useToast } from "@/hooks/use-toast"
 import { ProductFormModal } from "@/components/product-form-modal"
+import { getAuthToken } from "@/lib/ssr-safe-storage"
 import { Plus, Search, Filter, Download, Edit, Trash2, Package, Eye, Star, Clock, AlertCircle, MoreHorizontal } from "lucide-react"
 import { useSettings } from "@/contexts/settings-context"
 
@@ -250,7 +251,7 @@ export function ProductsPage() {
     }
 
     try {
-      const token = localStorage.getItem("auth_token")
+      const token = getAuthToken()
       if (!token) {
         toast({
           title: "Error",
