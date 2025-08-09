@@ -1,43 +1,26 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getDatabase } from "@/lib/local-db"
+import { supabaseAdmin } from "@/lib/supabase-server"
 import { verifyToken } from "@/lib/auth"
 
 export async function GET(request: NextRequest) {
   try {
-    const database = getDatabase()
-    
-    const products = await new Promise<any[]>((resolve, reject) => {
-      database.all(
-        'SELECT * FROM products ORDER BY created_at DESC',
-        (err, rows) => {
-          if (err) {
-            reject(err)
-          } else {
-            resolve(rows || [])
-          }
-        }
-      )
-    })
+    const { data: products, error } = await supabaseAdmin
+      .from('products')
+      .select('*')
+      .order('created_at', { ascending: false })
 
-    // Parse required_materials JSON strings back into arrays
-    const parsedProducts = products.map(product => {
+    if (error) {
+      console.error("Get products API error:", error)
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    }
+
+    // Parse required_materials JSONB back into arrays
+    const parsedProducts = (products || []).map(product => {
       console.log('Raw product required_materials:', product.required_materials, typeof product.required_materials)
       
       let parsedMaterials = []
       if (product.required_materials) {
-        if (typeof product.required_materials === 'string') {
-          try {
-            // Handle both JSON arrays and empty strings
-            if (product.required_materials === '[]' || product.required_materials === '') {
-              parsedMaterials = []
-            } else {
-              parsedMaterials = JSON.parse(product.required_materials)
-            }
-          } catch (error) {
-            console.error('Error parsing required_materials:', error, 'Raw value:', product.required_materials)
-            parsedMaterials = []
-          }
-        } else if (Array.isArray(product.required_materials)) {
+        if (Array.isArray(product.required_materials)) {
           parsedMaterials = product.required_materials
         } else {
           parsedMaterials = []
@@ -81,55 +64,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Required fields missing" }, { status: 400 })
     }
 
-    const database = getDatabase()
-    
-    // Ensure required_materials is always an array and properly stringified
+    // Ensure required_materials is always an array
     const materialsArray = Array.isArray(required_materials) ? required_materials : []
-    const materialsToSave = JSON.stringify(materialsArray)
-    console.log('Saving materials to DB:', materialsToSave, 'Original:', required_materials)
+    console.log('Saving materials to DB:', materialsArray, 'Original:', required_materials)
     
-    const product = await new Promise<any>((resolve, reject) => {
-      database.run(
-        `INSERT INTO products (product_name, sku, category, description, image_url, required_materials, print_time, weight, printer_type, created_at, updated_at) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-        [product_name, sku, category, description || null, image_url || null, materialsToSave, print_time, weight, printer_type],
-        function(err) {
-          if (err) {
-            reject(err)
-          } else {
-            // Get the created product
-            database.get(
-              'SELECT * FROM products WHERE id = ?',
-              [this.lastID],
-              (err, product) => {
-                if (err) {
-                  reject(err)
-                } else {
-                  resolve(product)
-                }
-              }
-            )
-          }
-        }
-      )
-    })
+    const { data: product, error } = await supabaseAdmin
+      .from('products')
+      .insert({
+        product_name,
+        sku,
+        category,
+        description: description || null,
+        image_url: image_url || null,
+        required_materials: materialsArray,
+        print_time,
+        weight,
+        printer_type,
+        price: 0, // Default price
+        status: 'active' // Default status
+      })
+      .select()
+      .single()
 
-    // Parse required_materials JSON string back into array
+    if (error) {
+      console.error("Create product API error:", error)
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    }
+
+    // Parse required_materials JSONB back into array
     let parsedMaterials = []
     if (product.required_materials) {
-      if (typeof product.required_materials === 'string') {
-        try {
-          // Handle both JSON arrays and empty strings
-          if (product.required_materials === '[]' || product.required_materials === '') {
-            parsedMaterials = []
-          } else {
-            parsedMaterials = JSON.parse(product.required_materials)
-          }
-        } catch (error) {
-          console.error('Error parsing required_materials in POST:', error, 'Raw value:', product.required_materials)
-          parsedMaterials = []
-        }
-      } else if (Array.isArray(product.required_materials)) {
+      if (Array.isArray(product.required_materials)) {
         parsedMaterials = product.required_materials
       } else {
         parsedMaterials = []
