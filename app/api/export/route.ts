@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getDatabase } from "@/lib/local-db"
+import { supabaseAdmin } from "@/lib/supabase-server"
 import { verifyToken } from "@/lib/auth"
 
 export async function POST(request: NextRequest) {
@@ -22,21 +22,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Tables array is required" }, { status: 400 })
     }
 
-    const database = getDatabase()
     const exportData: Record<string, any[]> = {}
 
-    // Export each requested table
+    // Export each requested table from Supabase
     for (const tableName of tables) {
-      const data = await new Promise<any[]>((resolve, reject) => {
-        database.all(`SELECT * FROM ${tableName}`, (err, rows) => {
-          if (err) {
-            reject(err)
-          } else {
-            resolve(rows || [])
-          }
-        })
-      })
-      exportData[tableName] = data
+      const { data, error } = await supabaseAdmin
+        .from(tableName)
+        .select('*')
+
+      if (error) {
+        console.error(`Error fetching data from ${tableName}:`, error)
+        return NextResponse.json({ error: `Failed to export ${tableName}` }, { status: 500 })
+      }
+
+      exportData[tableName] = data || []
     }
 
     // Generate CSV content for each table

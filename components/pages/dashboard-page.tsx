@@ -1,14 +1,44 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import React, { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { DollarSign, Package, Printer, TrendingUp, Users, AlertTriangle, Activity, Clock } from "lucide-react"
-import { useSettings } from "@/contexts/settings-context"
-import { useAuth } from "@/contexts/auth-context"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
+import { useAuth } from "@/contexts/auth-context"
+import { useSettings } from "@/contexts/settings-context"
+import { formatCurrency } from "@/lib/cost-calculator"
+import { getAuthToken } from "@/lib/ssr-safe-storage"
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts"
+import {
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  Package,
+  ShoppingCart,
+  Users,
+  Activity,
+  Calendar,
+  Clock,
+  Target,
+  Printer,
+  AlertTriangle,
+} from "lucide-react"
 
 interface DashboardStats {
   totalRevenue: number
@@ -37,7 +67,7 @@ export function DashboardPage() {
     lowStockComponents: 0,
   })
   const [loading, setLoading] = useState(true)
-  const { formatCurrency, settings } = useSettings()
+  const { settings } = useSettings()
   const { user } = useAuth()
   const { toast } = useToast()
 
@@ -199,7 +229,7 @@ export function DashboardPage() {
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground">Welcome to {settings.app_name}</p>
+          <p className="text-muted-foreground">Welcome to {settings?.app_name || "ERP System"}</p>
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {[1, 2, 3, 4].map((i) => (
@@ -221,7 +251,7 @@ export function DashboardPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground">Welcome to {settings.app_name}</p>
+        <p className="text-muted-foreground">Welcome to {settings?.app_name || "ERP System"}</p>
       </div>
 
       {/* Key Metrics */}
@@ -390,7 +420,7 @@ export function DashboardPage() {
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm">Currency</span>
-                <Badge variant="outline">{settings.currency}</Badge>
+                <Badge variant="outline">{settings?.currency || "USD"}</Badge>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm">App Version</span>

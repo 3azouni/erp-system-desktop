@@ -1,22 +1,23 @@
 "use client"
 
-import * as React from "react"
-import { useState, useEffect } from "react"
-import { Button } from "@/components/ui/button"
+import React, { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { useToast } from "@/hooks/use-toast"
-import { OrderFormModal } from "@/components/order-form-modal"
-import { Plus, Search, Filter, Download, Eye, Edit, Trash2, Package, Truck, CheckCircle, Clock, AlertCircle, DollarSign, Calendar } from "lucide-react"
+import { useAuth } from "@/contexts/auth-context"
 import { useSettings } from "@/contexts/settings-context"
+import { formatCurrency } from "@/lib/cost-calculator"
+import { getAuthToken } from "@/lib/ssr-safe-storage"
+import { OrderFormModal } from "@/components/order-form-modal"
+import { ShoppingCart, TrendingUp, TrendingDown, Calendar, Filter, Download, Plus, Package, User, DollarSign, Search, Eye, Edit, Trash2, Truck, CheckCircle, Clock, AlertCircle } from "lucide-react"
 
 interface Order {
   id: string
@@ -47,7 +48,6 @@ export function OrdersPage() {
   const [sourceFilter, setSourceFilter] = useState("all")
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [isFormOpen, setIsFormOpen] = useState(false)
-  const { formatCurrency } = useSettings()
 
   useEffect(() => {
     fetchOrders()

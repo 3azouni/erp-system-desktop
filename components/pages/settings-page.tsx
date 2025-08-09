@@ -304,7 +304,7 @@ export function SettingsPage() {
           <p className="text-muted-foreground">Configure your application preferences</p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={handleExportData} variant="outline">
+          <Button onClick={handleExportSettings} variant="outline">
             <Download className="mr-2 h-4 w-4" />
             Export Data
           </Button>

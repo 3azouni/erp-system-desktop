@@ -16,35 +16,26 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Current password and new password are required" }, { status: 400 })
     }
 
-    const db = getDatabase()
+    // Get session from Supabase
+    const { data: session, error: sessionError } = await supabaseAdmin
+      .from('user_sessions')
+      .select('*')
+      .eq('token', token)
+      .gt('expires_at', new Date().toISOString())
+      .single()
 
-    // Get session
-    const session = await new Promise<any>((resolve, reject) => {
-      db.get("SELECT * FROM user_sessions WHERE token = ? AND expires_at > ?", [token, new Date().toISOString()], (err, row) => {
-        if (err) {
-          reject(err)
-        } else {
-          resolve(row)
-        }
-      })
-    })
-
-    if (!session) {
+    if (sessionError || !session) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
-    // Get current user
-    const user = await new Promise<any>((resolve, reject) => {
-      db.get("SELECT password_hash FROM users WHERE id = ?", [session.user_id], (err, row) => {
-        if (err) {
-          reject(err)
-        } else {
-          resolve(row)
-        }
-      })
-    })
+    // Get current user from Supabase
+    const { data: user, error: userError } = await supabaseAdmin
+      .from('users')
+      .select('password_hash')
+      .eq('id', session.user_id)
+      .single()
 
-    if (!user) {
+    if (userError || !user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
 
@@ -58,20 +49,20 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Current password is incorrect" }, { status: 400 })
     }
 
-    // Update password (simple hash for demo)
+    // Update password in Supabase (simple hash for demo)
     const newPasswordHash = `${newPassword}_simple_hash`
-    await new Promise<void>((resolve, reject) => {
-      db.run("UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?", [
-        newPasswordHash,
-        session.user_id
-      ], function(err) {
-        if (err) {
-          reject(err)
-        } else {
-          resolve()
-        }
+    const { error: updateError } = await supabaseAdmin
+      .from('users')
+      .update({
+        password_hash: newPasswordHash,
+        updated_at: new Date().toISOString()
       })
-    })
+      .eq('id', session.user_id)
+
+    if (updateError) {
+      console.error("Supabase error:", updateError)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
     return NextResponse.json({ message: "Password updated successfully" })
   } catch (error) {

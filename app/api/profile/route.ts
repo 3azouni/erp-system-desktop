@@ -17,23 +17,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
-    
+    // Get user from Supabase
+    const { data: user, error } = await supabaseAdmin
+      .from('users')
+      .select('*')
+      .eq('id', decoded.userId || 1)
+      .single()
 
-    const database = getDatabase()
-    
-    const user = await new Promise<any>((resolve, reject) => {
-      database.get(
-        'SELECT * FROM users WHERE id = ?',
-        [decoded.userId || 1],
-        (err, row) => {
-          if (err) {
-            reject(err)
-          } else {
-            resolve(row)
-          }
-        }
-      )
-    })
+    if (error) {
+      console.error("Supabase error:", error)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
@@ -62,51 +56,27 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
-    
+    // Update user profile in Supabase
+    const { data: user, error } = await supabaseAdmin
+      .from('users')
+      .update({
+        full_name: body.full_name || "",
+        phone: body.phone || "",
+        bio: body.bio || "",
+        address: body.address || "",
+        city: body.city || "",
+        state: body.state || "",
+        zip: body.zip || "",
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', decoded.userId || 1)
+      .select()
+      .single()
 
-    const database = getDatabase()
-    
-    // Update user profile in database
-    await new Promise<void>((resolve, reject) => {
-      database.run(
-        `UPDATE users SET 
-         full_name = ?, phone = ?, bio = ?, address = ?, 
-         city = ?, state = ?, zip = ?, updated_at = datetime('now')
-         WHERE id = ?`,
-        [
-          body.full_name || "",
-          body.phone || "",
-          body.bio || "",
-          body.address || "",
-          body.city || "",
-          body.state || "",
-          body.zip || "",
-          decoded.userId || 1
-        ],
-        function(err) {
-          if (err) {
-            reject(err)
-          } else {
-            resolve()
-          }
-        }
-      )
-    })
-
-    // Get updated user data
-    const user = await new Promise<any>((resolve, reject) => {
-      database.get(
-        'SELECT * FROM users WHERE id = ?',
-        [decoded.userId || 1],
-        (err, row) => {
-          if (err) {
-            reject(err)
-          } else {
-            resolve(row)
-          }
-        }
-      )
-    })
+    if (error) {
+      console.error("Supabase error:", error)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })

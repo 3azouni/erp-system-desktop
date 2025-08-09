@@ -1,7 +1,27 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getDatabase, initializeDatabase, checkPrinterMaintenance } from "@/lib/local-db"
+import { supabaseAdmin } from "@/lib/supabase-server"
 import { verifyToken } from "@/lib/auth"
 import { createPrinterNotification } from "@/lib/notifications"
+
+// Helper function to check printer maintenance status
+function checkPrinterMaintenance(lastMaintenanceDate: string, hoursPrinted: number) {
+  const today = new Date()
+  const lastMaintenance = new Date(lastMaintenanceDate)
+  const daysSinceMaintenance = Math.floor((today.getTime() - lastMaintenance.getTime()) / (1000 * 60 * 60 * 24))
+  
+  // Maintenance is due every 30 days or every 1000 hours
+  const maintenanceDueDays = 30
+  const maintenanceDueHours = 1000
+  
+  const needsMaintenance = daysSinceMaintenance >= maintenanceDueDays || hoursPrinted >= maintenanceDueHours
+  const isOverdue = daysSinceMaintenance >= maintenanceDueDays * 1.5 || hoursPrinted >= maintenanceDueHours * 1.2
+  
+  return {
+    needsMaintenance,
+    isOverdue,
+    daysSinceMaintenance
+  }
+}
 
 export async function PUT(
   request: NextRequest,
@@ -26,24 +46,17 @@ export async function PUT(
       return NextResponse.json({ error: "Required fields missing" }, { status: 400 })
     }
 
-    
-
-    const database = getDatabase()
-    
     // Get current printer to check for status changes
-    const currentPrinter = await new Promise<any>((resolve, reject) => {
-      database.get(
-        'SELECT * FROM printers WHERE id = ?',
-        [params.id],
-        (err, row) => {
-          if (err) {
-            reject(err)
-          } else {
-            resolve(row)
-          }
-        }
-      )
-    })
+    const { data: currentPrinter, error: fetchError } = await supabaseAdmin
+      .from('printers')
+      .select('*')
+      .eq('id', params.id)
+      .single()
+
+    if (fetchError) {
+      console.error("Supabase error:", fetchError)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
     if (!currentPrinter) {
       return NextResponse.json({ error: "Printer not found" }, { status: 404 })
@@ -55,36 +68,29 @@ export async function PUT(
       hours_printed || 0
     )
     
-    const printer = await new Promise<any>((resolve, reject) => {
-      database.run(
-        `UPDATE printers SET 
-         printer_name = ?, model = ?, status = ?, power_consumption = ?, 
-         hours_printed = ?, last_maintenance_date = ?, job_queue = ?, 
-         location = ?, notes = ?, updated_at = datetime('now')
-         WHERE id = ?`,
-        [printer_name, model, status || 'Idle', power_consumption || 0, hours_printed || 0, 
-         last_maintenance_date || new Date().toISOString().split('T')[0], job_queue || 0, 
-         location || null, notes || null, params.id],
-        function(err) {
-          if (err) {
-            reject(err)
-          } else {
-            // Get the updated printer
-            database.get(
-              'SELECT * FROM printers WHERE id = ?',
-              [params.id],
-              (err, printer) => {
-                if (err) {
-                  reject(err)
-                } else {
-                  resolve(printer)
-                }
-              }
-            )
-          }
-        }
-      )
-    })
+    // Update printer in Supabase
+    const { data: printer, error: updateError } = await supabaseAdmin
+      .from('printers')
+      .update({
+        printer_name,
+        model,
+        status: status || 'Idle',
+        power_consumption: power_consumption || 0,
+        hours_printed: hours_printed || 0,
+        last_maintenance_date: last_maintenance_date || new Date().toISOString().split('T')[0],
+        job_queue: job_queue || 0,
+        location: location || null,
+        notes: notes || null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', params.id)
+      .select()
+      .single()
+
+    if (updateError) {
+      console.error("Supabase error:", updateError)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
     // Create notifications for maintenance or status changes
     const statusChanged = currentPrinter.status !== (status || 'Idle')
@@ -136,21 +142,16 @@ export async function DELETE(
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
-    const database = getDatabase()
-    
-    await new Promise<void>((resolve, reject) => {
-      database.run(
-        'DELETE FROM printers WHERE id = ?',
-        [params.id],
-        function(err) {
-          if (err) {
-            reject(err)
-          } else {
-            resolve()
-          }
-        }
-      )
-    })
+    // Delete printer from Supabase
+    const { error } = await supabaseAdmin
+      .from('printers')
+      .delete()
+      .eq('id', params.id)
+
+    if (error) {
+      console.error("Supabase error:", error)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {

@@ -123,7 +123,7 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader className="border-b px-6 py-4">
         <div className="flex items-center gap-3">
-          {settings.app_logo_url ? (
+          {settings?.app_logo_url ? (
             <img src={settings.app_logo_url || "/placeholder.svg"} alt="Logo" className="h-8 w-8 rounded" />
           ) : (
             <div className="h-8 w-8 rounded bg-primary flex items-center justify-center">
@@ -131,7 +131,7 @@ export function AppSidebar() {
             </div>
           )}
           <div>
-            <h2 className="text-lg font-semibold">{settings.app_name}</h2>
+            <h2 className="text-lg font-semibold">{settings?.app_name || "ERP System"}</h2>
             <p className="text-xs text-muted-foreground">Business Management</p>
           </div>
         </div>
@@ -159,7 +159,7 @@ export function AppSidebar() {
       </SidebarContent>
       <SidebarFooter className="border-t px-6 py-4">
         <div className="text-xs text-muted-foreground">
-          <p>{settings.footer_text}</p>
+          <p>{settings?.footer_text || "© 2024 ERP System"}</p>
         </div>
       </SidebarFooter>
       <SidebarRail />

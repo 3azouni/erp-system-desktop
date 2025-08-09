@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getDatabase } from "@/lib/local-db"
+import { supabaseAdmin } from "@/lib/supabase-server"
 import { verifyToken } from "@/lib/auth"
 
 export async function GET(
@@ -7,21 +7,17 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const database = getDatabase()
-    
-    const order = await new Promise<any>((resolve, reject) => {
-      database.get(
-        'SELECT * FROM orders WHERE id = ?',
-        [params.id],
-        (err, order) => {
-          if (err) {
-            reject(err)
-          } else {
-            resolve(order)
-          }
-        }
-      )
-    })
+    // Get order from Supabase
+    const { data: order, error } = await supabaseAdmin
+      .from('orders')
+      .select('*')
+      .eq('id', params.id)
+      .single()
+
+    if (error) {
+      console.error("Supabase error:", error)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
     if (!order) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 })
@@ -83,36 +79,32 @@ export async function PUT(
       return NextResponse.json({ error: "Required fields missing" }, { status: 400 })
     }
 
-    const database = getDatabase()
-    
-    const order = await new Promise<any>((resolve, reject) => {
-      database.run(
-        `UPDATE orders SET 
-         order_id = ?, customer_name = ?, customer_email = ?, customer_phone = ?, 
-         source = ?, ordered_products = ?, total_quantity = ?, total_amount = ?, 
-         status = ?, tracking_number = ?, shipping_address = ?, notes = ?, updated_at = datetime('now')
-         WHERE id = ?`,
-        [order_id, customer_name, customer_email || null, customer_phone || null, source, JSON.stringify(ordered_products || []), total_quantity || 0, total_amount || 0, status || 'New', tracking_number || null, shipping_address || null, notes || null, params.id],
-        function(err) {
-          if (err) {
-            reject(err)
-          } else {
-            // Get the updated order
-            database.get(
-              'SELECT * FROM orders WHERE id = ?',
-              [params.id],
-              (err, order) => {
-                if (err) {
-                  reject(err)
-                } else {
-                  resolve(order)
-                }
-              }
-            )
-          }
-        }
-      )
-    })
+    // Update order in Supabase
+    const { data: order, error } = await supabaseAdmin
+      .from('orders')
+      .update({
+        order_id,
+        customer_name,
+        customer_email: customer_email || null,
+        customer_phone: customer_phone || null,
+        source,
+        ordered_products: JSON.stringify(ordered_products || []),
+        total_quantity: total_quantity || 0,
+        total_amount: total_amount || 0,
+        status: status || 'New',
+        tracking_number: tracking_number || null,
+        shipping_address: shipping_address || null,
+        notes: notes || null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', params.id)
+      .select()
+      .single()
+
+    if (error) {
+      console.error("Supabase error:", error)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
     if (!order) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 })
@@ -167,21 +159,16 @@ export async function DELETE(
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
-    const database = getDatabase()
-    
-    await new Promise<void>((resolve, reject) => {
-      database.run(
-        'DELETE FROM orders WHERE id = ?',
-        [params.id],
-        function(err) {
-          if (err) {
-            reject(err)
-          } else {
-            resolve()
-          }
-        }
-      )
-    })
+    // Delete order from Supabase
+    const { error } = await supabaseAdmin
+      .from('orders')
+      .delete()
+      .eq('id', params.id)
+
+    if (error) {
+      console.error("Supabase error:", error)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {

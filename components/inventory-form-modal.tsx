@@ -18,17 +18,17 @@ import { useToast } from "@/hooks/use-toast"
 
 export interface InventoryItem {
   id: number
-  product_id: number
-  quantity: number
-  location: string
-  minimum_threshold: number
-  maximum_threshold: number
-  unit_cost: number
+  material_name: string
+  material_type: string
+  color: string
+  price_per_kg: number
+  quantity_available: number
   supplier: string
-  last_updated: string
-  created_at: string
-  updated_at: string
-  product_name?: string
+  minimum_threshold: number
+  status: "Normal" | "Low" | "Out"
+  notes?: string
+  created_at?: string
+  updated_at?: string
 }
 
 async function createInventoryItem(data: any) {

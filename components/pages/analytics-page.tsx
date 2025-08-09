@@ -1,12 +1,15 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { subDays } from "date-fns"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { createObjectURL, revokeObjectURL } from "@/lib/ssr-safe-window"
 import { createDownloadLink } from "@/lib/ssr-safe-document"
+import { getAuthToken } from "@/lib/ssr-safe-storage"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useToast } from "@/hooks/use-toast"
 import {
   BarChart,
   Bar,
@@ -38,7 +41,12 @@ interface AnalyticsData {
 }
 
 export function AnalyticsPage() {
+  const { toast } = useToast()
   const [timeRange, setTimeRange] = useState("6months")
+  const [orders, setOrders] = useState<any[]>([])
+  const [products, setProducts] = useState<any[]>([])
+  const [expenses, setExpenses] = useState<any[]>([])
+  const [printers, setPrinters] = useState<any[]>([])
   const [analytics, setAnalytics] = useState<AnalyticsData>({
     totalRevenue: 0,
     totalOrders: 0,
@@ -95,7 +103,11 @@ export function AnalyticsPage() {
       setExpenses(expensesData.expenses || [])
       setPrinters(printersData.printers || [])
     } catch (error) {
-      toast.error('Failed to load analytics data')
+      toast({
+        title: "Error",
+        description: "Failed to load analytics data",
+        variant: "destructive",
+      })
     } finally {
       setLoading(false)
     }

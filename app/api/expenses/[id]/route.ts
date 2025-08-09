@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getDatabase } from "@/lib/local-db"
+import { supabaseAdmin } from "@/lib/supabase-server"
 import { verifyToken } from "@/lib/auth"
 
 export async function PUT(
@@ -25,35 +25,27 @@ export async function PUT(
       return NextResponse.json({ error: "Required fields missing" }, { status: 400 })
     }
 
-    const database = getDatabase()
-    
-    const expense = await new Promise<any>((resolve, reject) => {
-      database.run(
-        `UPDATE expenses SET 
-         expense_type = ?, amount = ?, date = ?, description = ?, 
-         vendor = ?, receipt_url = ?, notes = ?, updated_at = datetime('now')
-         WHERE id = ?`,
-        [expense_type, amount, date || new Date().toISOString().split('T')[0], description, vendor || null, receipt_url || null, notes || null, params.id],
-        function(err) {
-          if (err) {
-            reject(err)
-          } else {
-            // Get the updated expense
-            database.get(
-              'SELECT * FROM expenses WHERE id = ?',
-              [params.id],
-              (err, expense) => {
-                if (err) {
-                  reject(err)
-                } else {
-                  resolve(expense)
-                }
-              }
-            )
-          }
-        }
-      )
-    })
+    // Update expense in Supabase
+    const { data: expense, error } = await supabaseAdmin
+      .from('expenses')
+      .update({
+        expense_type,
+        amount,
+        date: date || new Date().toISOString().split('T')[0],
+        description,
+        vendor: vendor || null,
+        receipt_url: receipt_url || null,
+        notes: notes || null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', params.id)
+      .select()
+      .single()
+
+    if (error) {
+      console.error("Supabase error:", error)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
     if (!expense) {
       return NextResponse.json({ error: "Expense not found" }, { status: 404 })
@@ -82,23 +74,18 @@ export async function DELETE(
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
-    const database = getDatabase()
-    
-    await new Promise<void>((resolve, reject) => {
-      database.run(
-        'DELETE FROM expenses WHERE id = ?',
-        [params.id],
-        function(err) {
-          if (err) {
-            reject(err)
-          } else {
-            resolve()
-          }
-        }
-      )
-    })
+    // Delete expense from Supabase
+    const { error } = await supabaseAdmin
+      .from('expenses')
+      .delete()
+      .eq('id', params.id)
 
-    return NextResponse.json({ success: true })
+    if (error) {
+      console.error("Supabase error:", error)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
+
+    return NextResponse.json({ message: "Expense deleted successfully" })
   } catch (error) {
     console.error("Delete expense API error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

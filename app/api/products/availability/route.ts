@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Product ID and quantity are required" }, { status: 400 })
     }
 
-    const availability = await availabilityService.checkProductAvailability(product_id, quantity)
+    const availability = await availabilityService.getProductAvailability(product_id, quantity)
     return NextResponse.json(availability)
 
   } catch (error) {

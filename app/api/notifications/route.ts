@@ -15,16 +15,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
-    
+    // Get notifications for the current user from Supabase
+    const { data: notifications, error } = await supabaseAdmin
+      .from('notifications')
+      .select('*')
+      .eq('user_id', decoded.userId || 1)
+      .order('created_at', { ascending: false })
+      .limit(50)
 
-    const database = getDatabase()
-    
-    // Get notifications for the current user
-    const notifications = database.prepare(
-      'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50'
-    ).all(decoded.userId || 1)
+    if (error) {
+      console.error("Supabase error:", error)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
-    return NextResponse.json({ notifications })
+    return NextResponse.json({ notifications: notifications || [] })
   } catch (error) {
     console.error("Get notifications API error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
@@ -51,15 +55,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Title and message are required" }, { status: 400 })
     }
 
-    
-
-    const database = getDatabase()
-    
-    // Create new notification
-    const { data: undefined, error } = await supabaseAdmin
-      .from('undefined')
+    // Create new notification in Supabase
+    const { data: notification, error } = await supabaseAdmin
+      .from('notifications')
       .insert({
-        // Add your fields here
+        user_id: decoded.userId || 1,
+        title,
+        message,
+        type,
+        data: data || null,
+        is_read: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       })
       .select()
       .single()

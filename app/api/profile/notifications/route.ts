@@ -17,57 +17,35 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
-    
+    // Get or create notification preferences from Supabase
+    let { data: notifications, error } = await supabaseAdmin
+      .from('user_notification_preferences')
+      .select('*')
+      .eq('user_id', decoded.userId || 1)
+      .single()
 
-    const database = getDatabase()
-    
-    // Get or create notification preferences
-    let notifications = await new Promise<any>((resolve, reject) => {
-      database.get(
-        'SELECT * FROM user_notification_preferences WHERE user_id = ?',
-        [decoded.userId || 1],
-        (err, row) => {
-          if (err) {
-            reject(err)
-          } else {
-            resolve(row)
-          }
-        }
-      )
-    })
-
-    if (!notifications) {
+    if (error || !notifications) {
       // Create default notification preferences
-      await new Promise<void>((resolve, reject) => {
-        database.run(
-          `INSERT INTO user_notification_preferences 
-           (user_id, email_notifications, push_notifications, sms_notifications, marketing_emails, created_at, updated_at) 
-           VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-          [decoded.userId || 1, 1, 1, 0, 0],
-          function(err) {
-            if (err) {
-              reject(err)
-            } else {
-              resolve()
-            }
-          }
-        )
-      })
+      const { data: newNotifications, error: insertError } = await supabaseAdmin
+        .from('user_notification_preferences')
+        .insert({
+          user_id: decoded.userId || 1,
+          email_notifications: true,
+          push_notifications: true,
+          sms_notifications: false,
+          marketing_emails: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single()
 
-      // Get the created notification preferences
-      notifications = await new Promise<any>((resolve, reject) => {
-        database.get(
-          'SELECT * FROM user_notification_preferences WHERE user_id = ?',
-          [decoded.userId || 1],
-          (err, row) => {
-            if (err) {
-              reject(err)
-            } else {
-              resolve(row)
-            }
-          }
-        )
-      })
+      if (insertError) {
+        console.error("Supabase error:", insertError)
+        return NextResponse.json({ error: "Database error" }, { status: 500 })
+      }
+
+      notifications = newNotifications
     }
 
     return NextResponse.json({ notifications })
@@ -93,47 +71,24 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
-    
+    // Update notification preferences in Supabase
+    const { data: notifications, error } = await supabaseAdmin
+      .from('user_notification_preferences')
+      .upsert({
+        user_id: decoded.userId || 1,
+        email_notifications: body.email_notifications || false,
+        push_notifications: body.push_notifications || false,
+        sms_notifications: body.sms_notifications || false,
+        marketing_emails: body.marketing_emails || false,
+        updated_at: new Date().toISOString()
+      })
+      .select()
+      .single()
 
-    const database = getDatabase()
-    
-    // Update notification preferences
-    await new Promise<void>((resolve, reject) => {
-      database.run(
-        `INSERT OR REPLACE INTO user_notification_preferences 
-         (user_id, email_notifications, push_notifications, sms_notifications, marketing_emails, updated_at) 
-         VALUES (?, ?, ?, ?, ?, datetime('now'))`,
-        [
-          decoded.userId || 1,
-          body.email_notifications ? 1 : 0,
-          body.push_notifications ? 1 : 0,
-          body.sms_notifications ? 1 : 0,
-          body.marketing_emails ? 1 : 0
-        ],
-        function(err) {
-          if (err) {
-            reject(err)
-          } else {
-            resolve()
-          }
-        }
-      )
-    })
-
-    // Get updated notification preferences
-    const notifications = await new Promise<any>((resolve, reject) => {
-      database.get(
-        'SELECT * FROM user_notification_preferences WHERE user_id = ?',
-        [decoded.userId || 1],
-        (err, row) => {
-          if (err) {
-            reject(err)
-          } else {
-            resolve(row)
-          }
-        }
-      )
-    })
+    if (error) {
+      console.error("Supabase error:", error)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
     return NextResponse.json({ notifications })
   } catch (error) {

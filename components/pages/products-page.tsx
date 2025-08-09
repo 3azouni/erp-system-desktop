@@ -98,10 +98,18 @@ export function ProductsPage() {
         
         setProducts(products)
       } else {
-        toast.error('Failed to load products')
+        toast({
+          title: "Error",
+          description: "Failed to load products",
+          variant: "destructive",
+        })
       }
     } catch (error) {
-      toast.error('An error occurred while loading products')
+      toast({
+        title: "Error",
+        description: "An error occurred while loading products",
+        variant: "destructive",
+      })
     } finally {
       setLoading(false)
     }

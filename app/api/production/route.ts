@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getDatabase, initializeDatabase, updateInventoryQuantity } from "@/lib/local-db"
+import { supabaseAdmin } from "@/lib/supabase-server"
 import { verifyToken } from "@/lib/auth"
 import { createInventoryNotification } from "@/lib/notifications"
 
@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
     const token = authHeader.substring(7)
     const decoded = verifyToken(token)
     if (!decoded) {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 })
+      return NextResponse.json({ error: "Invalid token" }, { status: 400 })
     }
 
     const body = await request.json()
@@ -23,9 +23,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Product ID, quantity, and materials used are required" }, { status: 400 })
     }
 
-    
-
-    const database = getDatabase()
     const results = []
     const notifications = []
     const userId = parseInt(decoded.userId) || 1
@@ -38,49 +35,72 @@ export async function POST(request: NextRequest) {
         continue
       }
 
-      // Update inventory quantity
-      const result = await updateInventoryQuantity(materialId, quantityUsed, userId)
+      // Get current inventory quantity
+      const { data: inventoryItem, error: fetchError } = await supabaseAdmin
+        .from('inventory')
+        .select('quantity, minimum_stock_level, material_name')
+        .eq('id', materialId)
+        .single()
+
+      if (fetchError) {
+        console.error("Error fetching inventory item:", fetchError)
+        continue
+      }
+
+      if (!inventoryItem) {
+        continue
+      }
+
+      const currentQuantity = inventoryItem.quantity || 0
+      const newQuantity = Math.max(0, currentQuantity - quantityUsed)
+      const minimumStock = inventoryItem.minimum_stock_level || 0
       
-      if (result.success) {
-        results.push({
-          materialId,
-          quantityUsed,
-          newStatus: result.newStatus,
-          wasLowStock: result.wasLowStock
+      // Determine new status
+      let newStatus = "In Stock"
+      if (newQuantity === 0) {
+        newStatus = "Out"
+      } else if (newQuantity <= minimumStock) {
+        newStatus = "Low"
+      }
+
+      // Check if stock was low before update
+      const wasLowStock = currentQuantity > minimumStock && newQuantity <= minimumStock
+
+      // Update inventory quantity
+      const { error: updateError } = await supabaseAdmin
+        .from('inventory')
+        .update({ 
+          quantity: newQuantity,
+          updated_at: new Date().toISOString()
         })
+        .eq('id', materialId)
 
-        // Create notification if stock became low
-        if (result.wasLowStock) {
-          try {
-            // Get material name for notification
-            const materialInfo = await new Promise<any>((resolve, reject) => {
-              database.get(
-                'SELECT material_name FROM inventory WHERE id = ?',
-                [materialId],
-                (err, row) => {
-                  if (err) {
-                    reject(err)
-                  } else {
-                    resolve(row)
-                  }
-                }
-              )
-            })
+      if (updateError) {
+        console.error("Error updating inventory:", updateError)
+        continue
+      }
 
-            if (materialInfo) {
-              await createInventoryNotification(
-                userId, 
-                materialInfo.material_name, 
-                result.newStatus === "Out" ? "out" : "low"
-              )
-              notifications.push({
-                materialName: materialInfo.material_name,
-                status: result.newStatus
-              })
-            }
-          } catch (error) {
-            console.error("Error creating inventory notification:", error)
-          }
+      results.push({
+        materialId,
+        quantityUsed,
+        newStatus,
+        wasLowStock
+      })
+
+      // Create notification if stock became low
+      if (wasLowStock) {
+        try {
+          await createInventoryNotification(
+            userId, 
+            inventoryItem.material_name, 
+            newStatus === "Out" ? "out" : "low"
+          )
+          notifications.push({
+            materialName: inventoryItem.material_name,
+            status: newStatus
+          })
+        } catch (error) {
+          console.error("Error creating inventory notification:", error)
         }
       }
     }

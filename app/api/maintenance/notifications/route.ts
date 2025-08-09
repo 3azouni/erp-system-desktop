@@ -1,7 +1,27 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getDatabase, initializeDatabase, checkPrinterMaintenance } from "@/lib/local-db"
+import { supabaseAdmin } from "@/lib/supabase-server"
 import { verifyToken } from "@/lib/auth"
 import { createPrinterNotification } from "@/lib/notifications"
+
+// Helper function to check printer maintenance status
+function checkPrinterMaintenance(lastMaintenanceDate: string, hoursPrinted: number) {
+  const today = new Date()
+  const lastMaintenance = new Date(lastMaintenanceDate)
+  const daysSinceMaintenance = Math.floor((today.getTime() - lastMaintenance.getTime()) / (1000 * 60 * 60 * 24))
+  
+  // Maintenance is due every 30 days or every 1000 hours
+  const maintenanceDueDays = 30
+  const maintenanceDueHours = 1000
+  
+  const needsMaintenance = daysSinceMaintenance >= maintenanceDueDays || hoursPrinted >= maintenanceDueHours
+  const isOverdue = daysSinceMaintenance >= maintenanceDueDays * 1.5 || hoursPrinted >= maintenanceDueHours * 1.2
+  
+  return {
+    needsMaintenance,
+    isOverdue,
+    daysSinceMaintenance
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,29 +36,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
-    
+    // Get all printers from Supabase
+    const { data: printers, error } = await supabaseAdmin
+      .from('printers')
+      .select('*')
+      .order('created_at', { ascending: false })
 
-    const database = getDatabase()
-    
-    // Get all printers
-    const printers = await new Promise<any[]>((resolve, reject) => {
-      database.all(
-        'SELECT * FROM printers ORDER BY created_at DESC',
-        (err, rows) => {
-          if (err) {
-            reject(err)
-          } else {
-            resolve(rows || [])
-          }
-        }
-      )
-    })
+    if (error) {
+      console.error("Supabase error:", error)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
     const notifications = []
     const userId = parseInt(decoded.userId) || 1
 
     // Check each printer for maintenance needs
-    for (const printer of printers) {
+    for (const printer of printers || []) {
       const maintenanceStatus = checkPrinterMaintenance(
         printer.last_maintenance_date || new Date().toISOString().split('T')[0],
         printer.hours_printed || 0

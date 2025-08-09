@@ -1,16 +1,19 @@
 "use client"
 
-import * as React from "react"
-import { Button } from "@/components/ui/button"
+import React from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Separator } from "@/components/ui/separator"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Calculator, DollarSign, Package, TrendingUp, AlertCircle } from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Separator } from "@/components/ui/separator"
 import { useToast } from "@/hooks/use-toast"
 import { useSettings } from "@/contexts/settings-context"
+import { formatCurrency } from "@/lib/cost-calculator"
+import { Package, Calculator, DollarSign, TrendingUp, FileText, Download, AlertCircle } from "lucide-react"
 
 interface CostCalculation {
   materialCost: number
@@ -28,7 +31,7 @@ interface CostCalculation {
 
 export function BOMPage() {
   const { toast } = useToast()
-  const { settings, formatCurrency } = useSettings()
+  const { settings } = useSettings()
   const [products, setProducts] = React.useState<any[]>([])
   const [selectedProduct, setSelectedProduct] = React.useState<any | null>(null)
   const [loading, setLoading] = React.useState(true)

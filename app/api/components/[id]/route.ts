@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getDatabase } from "@/lib/local-db"
+import { supabaseAdmin } from "@/lib/supabase-server"
 import { verifyToken } from "@/lib/auth"
 import { createComponentNotification } from "@/lib/notifications"
 
@@ -18,31 +18,36 @@ export async function GET(
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
-    const db = getDatabase()
-    
-    const component = await new Promise<any>((resolve, reject) => {
-      db.get(`
-        SELECT 
-          c.*,
-          COALESCE(ci.current_stock, 0) as current_stock,
-          COALESCE(ci.reserved_stock, 0) as reserved_stock
-        FROM components c
-        LEFT JOIN component_inventory ci ON c.id = ci.component_id
-        WHERE c.id = ?
-      `, [params.id], (err, row) => {
-        if (err) {
-          reject(err)
-        } else {
-          resolve(row)
-        }
-      })
-    })
+    // Get component with inventory data from Supabase
+    const { data: component, error } = await supabaseAdmin
+      .from('components')
+      .select(`
+        *,
+        component_inventory!inner(
+          current_stock,
+          reserved_stock
+        )
+      `)
+      .eq('id', params.id)
+      .single()
+
+    if (error) {
+      console.error("Supabase error:", error)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
     if (!component) {
       return NextResponse.json({ error: "Component not found" }, { status: 404 })
     }
 
-    return NextResponse.json({ component })
+    // Format the response to match the expected structure
+    const formattedComponent = {
+      ...component,
+      current_stock: component.component_inventory?.[0]?.current_stock || 0,
+      reserved_stock: component.component_inventory?.[0]?.reserved_stock || 0
+    }
+
+    return NextResponse.json({ component: formattedComponent })
   } catch (error) {
     console.error("Error fetching component:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
@@ -80,40 +85,26 @@ export async function PUT(
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
-    const db = getDatabase()
-    
-    await new Promise<void>((resolve, reject) => {
-      db.run(`
-        UPDATE components SET
-          component_name = ?,
-          description = ?,
-          part_number = ?,
-          category = ?,
-          cost = ?,
-          supplier = ?,
-          minimum_stock_level = ?,
-          serial_number_tracking = ?,
-          updated_at = ?
-        WHERE id = ?
-      `, [
+    // Update component in Supabase
+    const { error } = await supabaseAdmin
+      .from('components')
+      .update({
         component_name,
-        description || null,
-        part_number || null,
+        description: description || null,
+        part_number: part_number || null,
         category,
         cost,
-        supplier || null,
-        minimum_stock_level || 0,
-        serial_number_tracking ? 1 : 0,
-        new Date().toISOString(),
-        params.id
-      ], (err) => {
-        if (err) {
-          reject(err)
-        } else {
-          resolve()
-        }
+        supplier: supplier || null,
+        minimum_stock_level: minimum_stock_level || 0,
+        serial_number_tracking: serial_number_tracking || false,
+        updated_at: new Date().toISOString()
       })
-    })
+      .eq('id', params.id)
+
+    if (error) {
+      console.error("Supabase error:", error)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
     // Create notification for component update
     try {
@@ -144,40 +135,37 @@ export async function DELETE(
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
-    const db = getDatabase()
-    
     // Get component name before deletion for notification
-    const component = await new Promise<any>((resolve, reject) => {
-      db.get("SELECT component_name FROM components WHERE id = ?", [params.id], (err, row) => {
-        if (err) {
-          reject(err)
-        } else {
-          resolve(row)
-        }
-      })
-    })
+    const { data: component, error: fetchError } = await supabaseAdmin
+      .from('components')
+      .select('component_name')
+      .eq('id', params.id)
+      .single()
+
+    if (fetchError) {
+      console.error("Error fetching component:", fetchError)
+    }
     
     // Delete component inventory first
-    await new Promise<void>((resolve, reject) => {
-      db.run("DELETE FROM component_inventory WHERE component_id = ?", [params.id], (err) => {
-        if (err) {
-          reject(err)
-        } else {
-          resolve()
-        }
-      })
-    })
+    const { error: inventoryError } = await supabaseAdmin
+      .from('component_inventory')
+      .delete()
+      .eq('component_id', params.id)
+
+    if (inventoryError) {
+      console.error("Error deleting component inventory:", inventoryError)
+    }
 
     // Delete component
-    await new Promise<void>((resolve, reject) => {
-      db.run("DELETE FROM components WHERE id = ?", [params.id], (err) => {
-        if (err) {
-          reject(err)
-        } else {
-          resolve()
-        }
-      })
-    })
+    const { error } = await supabaseAdmin
+      .from('components')
+      .delete()
+      .eq('id', params.id)
+
+    if (error) {
+      console.error("Supabase error:", error)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
     // Create notification for component deletion
     if (component) {

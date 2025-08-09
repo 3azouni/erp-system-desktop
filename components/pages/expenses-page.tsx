@@ -1,29 +1,21 @@
 "use client"
 
-import type React from "react"
-
-import { useState, useEffect } from "react"
+import React, { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Plus, Download, Calendar, Receipt, DollarSign, Edit, Trash2 } from "lucide-react"
-import { useSettings } from "@/contexts/settings-context"
+import { Badge } from "@/components/ui/badge"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/contexts/auth-context"
+import { useSettings } from "@/contexts/settings-context"
+import { formatCurrency } from "@/lib/cost-calculator"
 import { getAuthToken } from "@/lib/ssr-safe-storage"
+import { ExpenseFormModal } from "@/components/expense-form-modal"
+import { DollarSign, TrendingUp, TrendingDown, Calendar, Filter, Download, Plus, Receipt, Edit, Trash2 } from "lucide-react"
 import { createObjectURL, revokeObjectURL } from "@/lib/ssr-safe-window"
 import { createDownloadLink } from "@/lib/ssr-safe-document"
 
@@ -40,7 +32,6 @@ export function ExpensesPage() {
     date: new Date().toISOString().split("T")[0],
     notes: "",
   })
-  const { formatCurrency } = useSettings()
   const { toast } = useToast()
   const { user, hasPermission } = useAuth()
 
@@ -351,170 +342,26 @@ export function ExpensesPage() {
             <Download className="mr-2 h-4 w-4" />
             Export CSV
           </Button>
-          <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Expense
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add New Expense</DialogTitle>
-                <DialogDescription>Record a new business expense</DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="expense-name">Expense Name</Label>
-                    <Input
-                      id="expense-name"
-                      value={formData.expense_name}
-                      onChange={(e) => setFormData({ ...formData, expense_name: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="expense-type">Type</Label>
-                    <Select
-                      value={formData.expense_type}
-                      onValueChange={(value) => setFormData({ ...formData, expense_type: value })}
-                      name="expense_type"
-                    >
-                      <SelectTrigger id="expense_type">
-                        <SelectValue placeholder="Select type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Filament Purchase">Filament Purchase</SelectItem>
-                        <SelectItem value="Software">Software</SelectItem>
-                        <SelectItem value="Marketing">Marketing</SelectItem>
-                        <SelectItem value="Labor">Labor</SelectItem>
-                        <SelectItem value="Electricity">Electricity</SelectItem>
-                        <SelectItem value="Maintenance">Maintenance</SelectItem>
-                        <SelectItem value="Other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="amount">Amount</Label>
-                    <Input
-                      id="amount"
-                      type="number"
-                      step="0.01"
-                      value={formData.amount}
-                      onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="date">Date</Label>
-                    <Input
-                      id="date"
-                      type="date"
-                      value={formData.date}
-                      onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                      required
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="notes">Notes</Label>
-                  <Textarea
-                    id="notes"
-                    value={formData.notes}
-                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                    rows={3}
-                  />
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button type="button" variant="outline" onClick={() => setIsAddModalOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit">Add Expense</Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
+          <ExpenseFormModal
+            open={isAddModalOpen}
+            onOpenChange={setIsAddModalOpen}
+            onSuccess={() => {
+              setIsAddModalOpen(false)
+              fetchExpenses()
+            }}
+          />
           
           {/* Edit Expense Modal */}
-          <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Edit Expense</DialogTitle>
-                <DialogDescription>Update the expense details</DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleEditSubmit} className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-expense-name">Expense Name</Label>
-                    <Input
-                      id="edit-expense-name"
-                      value={formData.expense_name}
-                      onChange={(e) => setFormData({ ...formData, expense_name: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-expense-type">Type</Label>
-                    <Select
-                      value={formData.expense_type}
-                      onValueChange={(value) => setFormData({ ...formData, expense_type: value })}
-                      name="edit_expense_type"
-                    >
-                      <SelectTrigger id="edit_expense_type">
-                        <SelectValue placeholder="Select type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Filament Purchase">Filament Purchase</SelectItem>
-                        <SelectItem value="Software">Software</SelectItem>
-                        <SelectItem value="Marketing">Marketing</SelectItem>
-                        <SelectItem value="Labor">Labor</SelectItem>
-                        <SelectItem value="Electricity">Electricity</SelectItem>
-                        <SelectItem value="Maintenance">Maintenance</SelectItem>
-                        <SelectItem value="Other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-amount">Amount</Label>
-                    <Input
-                      id="edit-amount"
-                      type="number"
-                      step="0.01"
-                      value={formData.amount}
-                      onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-date">Date</Label>
-                    <Input
-                      id="edit-date"
-                      type="date"
-                      value={formData.date}
-                      onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                      required
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-notes">Notes</Label>
-                  <Textarea
-                    id="edit-notes"
-                    value={formData.notes}
-                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                    rows={3}
-                  />
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button type="button" variant="outline" onClick={() => setIsEditModalOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit">Update Expense</Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
+          <ExpenseFormModal
+            open={isEditModalOpen}
+            onOpenChange={setIsEditModalOpen}
+            expense={editingExpense}
+            onSuccess={() => {
+              setIsEditModalOpen(false)
+              setEditingExpense(null)
+              fetchExpenses()
+            }}
+          />
         </div>
       </div>
 

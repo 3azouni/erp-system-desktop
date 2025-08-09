@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getDatabase } from "@/lib/local-db"
+import { supabaseAdmin } from "@/lib/supabase-server"
 import { verifyToken } from "@/lib/auth"
 import { createComponentNotification } from "@/lib/notifications"
 
@@ -25,32 +25,32 @@ export async function POST(
       return NextResponse.json({ error: "Invalid quantity" }, { status: 400 })
     }
 
-    const db = getDatabase()
-    
-    // Get current component stock
-    const component = await new Promise<any>((resolve, reject) => {
-      db.get(`
-        SELECT 
-          c.*,
-          COALESCE(ci.current_stock, 0) as current_stock,
-          COALESCE(ci.reserved_stock, 0) as reserved_stock
-        FROM components c
-        LEFT JOIN component_inventory ci ON c.id = ci.component_id
-        WHERE c.id = ?
-      `, [params.id], (err, row) => {
-        if (err) {
-          reject(err)
-        } else {
-          resolve(row)
-        }
-      })
-    })
+    // Get current component stock from Supabase
+    const { data: component, error: fetchError } = await supabaseAdmin
+      .from('components')
+      .select(`
+        *,
+        component_inventory!inner(
+          current_stock,
+          reserved_stock
+        )
+      `)
+      .eq('id', params.id)
+      .single()
+
+    if (fetchError) {
+      console.error("Supabase error:", fetchError)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
     if (!component) {
       return NextResponse.json({ error: "Component not found" }, { status: 404 })
     }
 
-    const availableStock = component.current_stock - component.reserved_stock
+    const currentStock = component.component_inventory?.[0]?.current_stock || 0
+    const reservedStock = component.component_inventory?.[0]?.reserved_stock || 0
+    const availableStock = currentStock - reservedStock
+
     if (availableStock < quantity) {
       return NextResponse.json({ 
         error: `Insufficient stock. Available: ${availableStock}, Requested: ${quantity}` 
@@ -58,20 +58,19 @@ export async function POST(
     }
 
     // Update component inventory
-    const newCurrentStock = component.current_stock - quantity
-    await new Promise<void>((resolve, reject) => {
-      db.run(`
-        UPDATE component_inventory 
-        SET current_stock = ?, updated_at = datetime('now')
-        WHERE component_id = ?
-      `, [newCurrentStock, params.id], (err) => {
-        if (err) {
-          reject(err)
-        } else {
-          resolve()
-        }
+    const newCurrentStock = currentStock - quantity
+    const { error: updateError } = await supabaseAdmin
+      .from('component_inventory')
+      .update({ 
+        current_stock: newCurrentStock,
+        updated_at: new Date().toISOString()
       })
-    })
+      .eq('component_id', params.id)
+
+    if (updateError) {
+      console.error("Supabase error:", updateError)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
     // Create notification for component usage
     try {

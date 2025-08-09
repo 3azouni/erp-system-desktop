@@ -17,40 +17,22 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
     const notificationId = params.id
 
-    
+    // Update the notification to mark as read in Supabase
+    const { data: notification, error } = await supabaseAdmin
+      .from('notifications')
+      .update({
+        is_read: true,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', notificationId)
+      .eq('user_id', decoded.userId || 1)
+      .select()
+      .single()
 
-    const database = getDatabase()
-    
-    // Update the notification to mark as read
-    await new Promise<void>((resolve, reject) => {
-      database.run(
-        `UPDATE notifications SET read = 1, updated_at = datetime('now') 
-         WHERE id = ? AND user_id = ?`,
-        [notificationId, decoded.userId || 1],
-        function(err) {
-          if (err) {
-            reject(err)
-          } else {
-            resolve()
-          }
-        }
-      )
-    })
-
-    // Get the updated notification
-    const notification = await new Promise<any>((resolve, reject) => {
-      database.get(
-        'SELECT * FROM notifications WHERE id = ? AND user_id = ?',
-        [notificationId, decoded.userId || 1],
-        (err, row) => {
-          if (err) {
-            reject(err)
-          } else {
-            resolve(row)
-          }
-        }
-      )
-    })
+    if (error) {
+      console.error("Supabase error:", error)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
     if (!notification) {
       return NextResponse.json({ error: "Notification not found" }, { status: 404 })

@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { verifyToken } from "@/lib/auth"
-import { getDatabase, initializeDatabase } from "@/lib/local-db"
+import { supabaseAdmin } from "@/lib/supabase-server"
 
 export async function DELETE(request: NextRequest) {
   try {
@@ -15,24 +15,16 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
-    
+    // Delete all notifications for the user from Supabase
+    const { error } = await supabaseAdmin
+      .from('notifications')
+      .delete()
+      .eq('user_id', decoded.userId || 1)
 
-    const database = getDatabase()
-    
-    // Delete all notifications for the user
-    await new Promise<void>((resolve, reject) => {
-      database.run(
-        `DELETE FROM notifications WHERE user_id = ?`,
-        [decoded.userId || 1],
-        function(err) {
-          if (err) {
-            reject(err)
-          } else {
-            resolve()
-          }
-        }
-      )
-    })
+    if (error) {
+      console.error("Supabase error:", error)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
+    }
 
     return NextResponse.json({ message: "All notifications cleared successfully" })
   } catch (error) {
